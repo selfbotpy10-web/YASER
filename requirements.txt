@@ -1,6 +1,2 @@
-pyrogram
+telethon
 tgcrypto
-apscheduler
-pytube
-requests
-pytz
