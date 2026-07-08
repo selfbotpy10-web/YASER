@@ -17,6 +17,20 @@ import json
 from datetime import datetime, timedelta
 import locale
 
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is Running!"
+
+def run_flask():
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
+
+Thread(target=run_flask, daemon=True).start()
+
 try:
     locale.setlocale(locale.LC_ALL, 'fa_IR.UTF-8')
 except:
