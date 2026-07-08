@@ -1,3 +1,6 @@
+from flask import Flask
+from threading import Thread
+import os
 import asyncio
 import os
 import sqlite3
