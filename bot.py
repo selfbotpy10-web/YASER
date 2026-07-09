@@ -30,7 +30,7 @@ def run_flask():
     )
 
 Thread(target=run_flask, daemon=True).start()
-
+print("✅ Flask Thread Started")
 try:
     locale.setlocale(locale.LC_ALL, 'fa_IR.UTF-8')
 except:
@@ -42,7 +42,7 @@ except:
 API_ID = 24775679
 API_HASH = '6c534bd84521d6325816520af1d48a23'
 BOT_TOKEN = '8933384056:AAGtKg0Kl8PpmyGcCs3-i62fNAbWYrdQfUY'
-
+print("✅ Config Loaded")
 # ====== لیست ادمین‌ها ======
 ADMINS = [8650091524, 8650091524]  # دو ادمین
 
