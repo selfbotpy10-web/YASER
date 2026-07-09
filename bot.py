@@ -223,7 +223,17 @@ async def handle_game_cancel(chat_id, message_id, organizer_id, event_to_edit):
 for admin_id in ADMINS:
     init_user_db(admin_id)
 
-bot = TelegramClient('bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+print("Starting Telethon...")
+print("API_ID:", API_ID)
+print("BOT_TOKEN exists:", bool(BOT_TOKEN))
+
+try:
+    bot = TelegramClient("bot", API_ID, API_HASH)
+    bot.start(bot_token=BOT_TOKEN)
+    print("✅ Telethon Connected!")
+except Exception as e:
+    print("❌ Telethon Error:", e)
+    raise
 
 user_clients = {}
 user_purchase_amount = {}
