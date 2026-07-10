@@ -1,4 +1,10 @@
 from pyrogram import Client, filters
+import asyncio
+
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import SessionPasswordNeeded
 import json, os, asyncio, subprocess, sys, time, threading
