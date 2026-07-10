@@ -1,4 +1,1 @@
-telethon
-tgcrypto
-flask
-gunicorn
+pyrogram
