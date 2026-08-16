@@ -1,0 +1,29 @@
+# Telegram Bot Dependencies
+python-telegram-bot==20.7
+telethon==1.30.3
+
+# Database and Data Management
+sqlalchemy==2.0.23
+
+# Time and Date Management
+pytz==2023.3
+
+# Payment Gateway
+requests==2.31.0
+zarinpal==1.1.0
+flask==3.0.0
+
+# Additional Utilities
+asyncio
+pathlib
+uuid
+threading
+logging
+json
+re
+os
+sys
+math
+random
+datetime
+multiprocessing
