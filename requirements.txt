@@ -10,7 +10,7 @@ pytz==2023.3
 
 # Payment Gateway
 requests==2.31.0
-zarinpal==1.1.0
+zarinpal
 flask==3.0.0
 
 # Additional Utilities
