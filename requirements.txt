@@ -8,3 +8,4 @@ pytz==2023.3
 requests==2.31.0
 zarinpal
 flask==3.0.0
+psutil
